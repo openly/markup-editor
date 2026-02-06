@@ -1,0 +1,41 @@
+{
+  "name": "@markup/editor",
+  "version": "1.0.0",
+  "description": "A vanilla JS image markup/annotation library with extensibility and dark mode support",
+  "main": "dist/markup-editor.umd.js",
+  "module": "dist/markup-editor.es.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/markup-editor.es.js",
+      "require": "./dist/markup-editor.umd.js",
+      "types": "./dist/index.d.ts"
+    },
+    "./style.css": "./dist/style.css"
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build && npm run build:types",
+    "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "konva": "^9.3.18"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.3",
+    "vite": "^7.3.1",
+    "vite-plugin-dts": "^4.5.3"
+  },
+  "keywords": [
+    "image",
+    "markup",
+    "annotation",
+    "canvas",
+    "editor"
+  ],
+  "license": "MIT"
+}

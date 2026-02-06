@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Markup Editor - Demo</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family:
+          system-ui,
+          -apple-system,
+          sans-serif;
+      }
+
+      /* Full page demo */
+      #editor {
+        width: 100vw;
+        height: 100vh;
+      }
+
+      /* Or embed in a container */
+      .demo-container {
+        width: 1200px;
+        height: 800px;
+        margin: 20px auto;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+
+      /* Controls for demo */
+      .demo-controls {
+        position: fixed;
+        bottom: 20px;
+        left: 20px;
+        z-index: 1000;
+        display: flex;
+        gap: 8px;
+      }
+
+      .demo-controls button {
+        padding: 8px 16px;
+        border: none;
+        border-radius: 6px;
+        background: #3b82f6;
+        color: white;
+        cursor: pointer;
+        font-size: 14px;
+      }
+
+      .demo-controls button:hover {
+        background: #2563eb;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="editor"></div>
+
+    <div class="demo-controls">
+      <button onclick="toggleTheme()">Toggle Theme</button>
+      <button onclick="loadSampleImage()">Load Sample Image</button>
+      <button onclick="exportJPG()">Export as JPG</button>
+    </div>
+
+    <script type="module">
+      import { MarkupEditor } from "./src/index.ts";
+
+      // Create the editor
+      const editor = new MarkupEditor({
+        container: "#editor",
+        theme: "auto", // 'light', 'dark', or 'auto'
+
+        // Optional: Specify which tools to show
+        // tools: ['select', 'pen', 'rectangle', 'text'],
+
+        // Optional: Default tool settings
+        defaultTool: "select",
+        defaultColor: "#ff0000",
+        defaultStrokeWidth: 3,
+
+        // Optional: Pre-load images
+        // images: [
+        //   { id: '1', url: 'https://example.com/image.jpg', name: 'Sample', rotation: 0 }
+        // ],
+
+        // Optional: UI options
+        showToolbar: true,
+        showHistoryPanel: true,
+        showNotesPanel: true,
+        showTopBar: true,
+
+        // Callbacks
+        onReady: (api) => {
+          console.log("Editor ready!", api);
+        },
+        onAnnotationAdd: (annotation) => {
+          console.log("Annotation added:", annotation);
+        },
+        onImageChange: (image, index) => {
+          console.log("Image changed:", image, index);
+        },
+        onExport: (dataUrl, format) => {
+          console.log("Exported:", format);
+        },
+      });
+
+      // Make editor available globally for demo
+      window.editor = editor;
+
+      // Theme toggle
+      window.toggleTheme = () => {
+        const current = editor.getTheme();
+        editor.setTheme(current === "light" ? "dark" : "light");
+      };
+
+      // Load sample image
+      window.loadSampleImage = () => {
+        editor.loadImage(
+          "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1200",
+          "Sample Mountain Image",
+        );
+      };
+
+      // Log annotations
+      window.logAnnotations = () => {
+        console.log("Annotations:", editor.getAnnotations());
+        console.log("History:", editor.getHistory());
+      };
+      window.exportJPG = () => {
+        editor.exportImage("jpeg").then((dataUrl) => {
+          const link = document.createElement("a");
+          link.href = dataUrl;
+          link.download = "exported-image.jpg";
+          document.body.appendChild(link);
+          link.click();
+          document.body.removeChild(link);
+        });
+      };
+    </script>
+  </body>
+</html>
