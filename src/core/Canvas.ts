@@ -2,6 +2,7 @@ import Konva from 'konva';
 import type { Store } from './Store';
 import type {
   Annotation,
+  OverlayImageData,
   ToolType,
   PenAnnotation,
   RectAnnotation,
@@ -19,11 +20,26 @@ export class Canvas {
   private store: Store;
   private stage: Konva.Stage;
   private imageLayer: Konva.Layer;
+  private gridLayer: Konva.Layer;
+  private overlayLayer: Konva.Layer;
   private annotationLayer: Konva.Layer;
   private previewLayer: Konva.Layer;
   private transformer: Konva.Transformer;
   private imageNode: Konva.Image | null = null;
   private imageElement: HTMLImageElement | null = null;
+
+  // Multi-overlay
+  private overlayNodes: Map<string, Konva.Image> = new Map();
+
+  // Grid
+  private gridLines: Konva.Line[] = [];
+
+  // Compare mode
+  private compareMode = false;
+  private compareWrapper: HTMLElement | null = null;
+  private compareLeftStage: Konva.Stage | null = null;
+  private compareRightStage: Konva.Stage | null = null;
+  private compareResizeObserver: ResizeObserver | null = null;
 
   // Drawing state
   private isDrawing = false;
@@ -47,10 +63,14 @@ export class Canvas {
 
     // Create layers
     this.imageLayer = new Konva.Layer();
+    this.gridLayer = new Konva.Layer();
+    this.overlayLayer = new Konva.Layer();
     this.annotationLayer = new Konva.Layer();
     this.previewLayer = new Konva.Layer();
 
     this.stage.add(this.imageLayer);
+    this.stage.add(this.gridLayer);
+    this.stage.add(this.overlayLayer);
     this.stage.add(this.annotationLayer);
     this.stage.add(this.previewLayer);
 
@@ -127,6 +147,9 @@ export class Canvas {
     this.store.on('zoomChange', () => this.updateTransform());
     this.store.on('positionChange', () => this.updateTransform());
     this.store.on('viewReset', () => this.updateTransform());
+    this.store.on('overlayChange', (active: OverlayImageData | null) => this.updateOverlay(active));
+    this.store.on('gridToggle', () => this.renderGrid());
+    this.store.on('compareModeChange', (enabled: boolean) => this.setCompareMode(enabled));
   }
 
   private getPointerPosition(): { x: number; y: number } | null {
@@ -147,6 +170,8 @@ export class Canvas {
   }
 
   private handleMouseDown(_e: Konva.KonvaEventObject<MouseEvent | TouchEvent>): void {
+    if (this.compareMode) return;
+
     const state = this.store.getState();
     const tool = state.currentTool as ToolType;
 
@@ -497,6 +522,7 @@ export class Canvas {
 
         // Fit to screen
         this.fitToScreen();
+        this.renderGrid();
         resolve();
       };
       img.onerror = () => reject(new Error('Failed to load image'));
@@ -519,6 +545,282 @@ export class Canvas {
       this.imageNode.rotation(image.rotation);
       this.imageLayer.batchDraw();
     }
+  }
+
+  // Multi-overlay methods
+  async loadOverlayImage(id: string, url: string, opacity: number): Promise<void> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const node = new Konva.Image({
+          image: img,
+          x: 0,
+          y: 0,
+          opacity,
+          listening: false,
+          visible: false,
+        });
+        this.overlayNodes.set(id, node);
+        this.overlayLayer.add(node);
+        this.overlayLayer.batchDraw();
+        resolve();
+      };
+      img.onerror = () => reject(new Error('Failed to load overlay image'));
+      img.src = url;
+    });
+  }
+
+  removeOverlayById(id: string): void {
+    const node = this.overlayNodes.get(id);
+    if (node) {
+      node.destroy();
+      this.overlayNodes.delete(id);
+    }
+    this.overlayLayer.batchDraw();
+  }
+
+  removeAllOverlays(): void {
+    this.overlayNodes.forEach(node => node.destroy());
+    this.overlayNodes.clear();
+    this.overlayLayer.batchDraw();
+  }
+
+  private updateOverlay(active: OverlayImageData | null): void {
+    // Hide all overlay nodes
+    this.overlayNodes.forEach(node => node.visible(false));
+
+    // Show and update the active one
+    if (active) {
+      const node = this.overlayNodes.get(active.id);
+      if (node) {
+        node.opacity(active.opacity);
+        node.visible(true);
+      }
+    }
+    this.overlayLayer.batchDraw();
+  }
+
+  // Grid
+  private renderGrid(): void {
+    this.gridLines.forEach(l => l.destroy());
+    this.gridLines = [];
+
+    if (!this.store.getState().gridVisible || !this.imageElement) return;
+
+    const w = this.imageElement.width;
+    const h = this.imageElement.height;
+    const lineStyle = {
+      stroke: 'rgba(255,255,255,0.6)',
+      strokeWidth: 1,
+      dash: [6, 4],
+      listening: false,
+    };
+
+    this.gridLines = [
+      new Konva.Line({ points: [w / 3, 0, w / 3, h], ...lineStyle }),
+      new Konva.Line({ points: [2 * w / 3, 0, 2 * w / 3, h], ...lineStyle }),
+      new Konva.Line({ points: [0, h / 3, w, h / 3], ...lineStyle }),
+      new Konva.Line({ points: [0, 2 * h / 3, w, 2 * h / 3], ...lineStyle }),
+    ];
+    this.gridLines.forEach(l => this.gridLayer.add(l));
+    this.gridLayer.batchDraw();
+  }
+
+  // Compare mode — true side-by-side with two Konva stages
+  private setCompareMode(enabled: boolean): void {
+    this.compareMode = enabled;
+    if (enabled) {
+      this.enterCompareMode();
+    } else {
+      this.exitCompareMode();
+    }
+  }
+
+  private enterCompareMode(): void {
+    if (!this.imageElement) return;
+
+    const activeOverlay = this.store.getActiveOverlay();
+    const activeNode = activeOverlay ? this.overlayNodes.get(activeOverlay.id) : null;
+    const overlayImgElement = activeNode ? (activeNode.image() as HTMLImageElement) : null;
+
+    // Hide the main stage
+    const stageContainer = this.stage.container();
+    stageContainer.style.display = 'none';
+
+    // Create side-by-side wrapper
+    this.compareWrapper = document.createElement('div');
+    this.compareWrapper.className = 'me-compare-wrapper';
+
+    const leftPane = document.createElement('div');
+    leftPane.className = 'me-compare-pane';
+    const leftLabel = document.createElement('div');
+    leftLabel.className = 'me-compare-label';
+    leftLabel.textContent = 'Original';
+    const leftCanvas = document.createElement('div');
+    leftCanvas.className = 'me-compare-canvas';
+
+    const rightPane = document.createElement('div');
+    rightPane.className = 'me-compare-pane';
+    const rightLabel = document.createElement('div');
+    rightLabel.className = 'me-compare-label';
+    rightLabel.textContent = activeOverlay?.name || 'Overlay';
+    const rightCanvas = document.createElement('div');
+    rightCanvas.className = 'me-compare-canvas';
+
+    const divider = document.createElement('div');
+    divider.className = 'me-compare-divider';
+
+    leftPane.appendChild(leftLabel);
+    leftPane.appendChild(leftCanvas);
+    rightPane.appendChild(rightLabel);
+    rightPane.appendChild(rightCanvas);
+
+    this.compareWrapper.appendChild(leftPane);
+    this.compareWrapper.appendChild(divider);
+    this.compareWrapper.appendChild(rightPane);
+    this.container.appendChild(this.compareWrapper);
+
+    // Create two stages after DOM layout — double rAF ensures flex layout is computed
+    requestAnimationFrame(() => { requestAnimationFrame(() => {
+      const w = leftCanvas.offsetWidth || this.container.clientWidth / 2;
+      const h = leftCanvas.offsetHeight || this.container.clientHeight;
+
+      if (w === 0 || h === 0) return;
+
+      this.compareLeftStage = new Konva.Stage({ container: leftCanvas, width: w, height: h });
+      this.compareRightStage = new Konva.Stage({ container: rightCanvas, width: w, height: h });
+
+      // Left: original image
+      const leftLayer = new Konva.Layer();
+      this.compareLeftStage.add(leftLayer);
+      if (this.imageElement) {
+        const leftImg = new Konva.Image({ image: this.imageElement, x: 0, y: 0 });
+        leftLayer.add(leftImg);
+      }
+
+      // Right: overlay image (or original if no overlay)
+      const rightLayer = new Konva.Layer();
+      this.compareRightStage.add(rightLayer);
+      if (overlayImgElement && this.imageElement) {
+        // Base image first, then overlay on top
+        const rightBase = new Konva.Image({ image: this.imageElement, x: 0, y: 0 });
+        rightLayer.add(rightBase);
+        const rightImg = new Konva.Image({ image: overlayImgElement, x: 0, y: 0 });
+        if (activeOverlay) rightImg.opacity(activeOverlay.opacity);
+        rightLayer.add(rightImg);
+      } else {
+        // No overlay — just show original
+        const rightImgSrc = this.imageElement;
+        if (rightImgSrc) {
+          const rightImg = new Konva.Image({ image: rightImgSrc, x: 0, y: 0 });
+          rightLayer.add(rightImg);
+        }
+      }
+
+      // Fit both to their containers
+      const fitStage = (stage: Konva.Stage, imgEl: HTMLImageElement) => {
+        const padding = 20;
+        const sw = stage.width();
+        const sh = stage.height();
+        const scaleX = (sw - padding * 2) / imgEl.width;
+        const scaleY = (sh - padding * 2) / imgEl.height;
+        const scale = Math.min(scaleX, scaleY, 1);
+        const x = (sw - imgEl.width * scale) / 2;
+        const y = (sh - imgEl.height * scale) / 2;
+        stage.scale({ x: scale, y: scale });
+        stage.position({ x, y });
+        stage.batchDraw();
+      };
+
+      if (this.imageElement) {
+        fitStage(this.compareLeftStage, this.imageElement);
+        fitStage(this.compareRightStage, this.imageElement);
+      }
+
+      // Synced zoom/pan
+      const syncTransform = (source: Konva.Stage, target: Konva.Stage) => {
+        target.scale(source.scale());
+        target.position(source.position());
+        target.batchDraw();
+      };
+
+      const setupWheel = (stage: Konva.Stage, other: Konva.Stage) => {
+        stage.on('wheel', (e) => {
+          e.evt.preventDefault();
+          const oldScale = stage.scaleX();
+          const pointer = stage.getPointerPosition();
+          if (!pointer) return;
+
+          const mousePointTo = {
+            x: (pointer.x - stage.x()) / oldScale,
+            y: (pointer.y - stage.y()) / oldScale,
+          };
+
+          const direction = e.evt.deltaY > 0 ? -1 : 1;
+          const newScale = Math.max(0.1, Math.min(5, direction > 0 ? oldScale * 1.1 : oldScale / 1.1));
+          const newPos = {
+            x: pointer.x - mousePointTo.x * newScale,
+            y: pointer.y - mousePointTo.y * newScale,
+          };
+
+          stage.scale({ x: newScale, y: newScale });
+          stage.position(newPos);
+          stage.batchDraw();
+          syncTransform(stage, other);
+        });
+      };
+
+      const setupDrag = (stage: Konva.Stage, other: Konva.Stage) => {
+        stage.draggable(true);
+        stage.on('dragmove', () => syncTransform(stage, other));
+      };
+
+      setupWheel(this.compareLeftStage, this.compareRightStage);
+      setupWheel(this.compareRightStage, this.compareLeftStage);
+      setupDrag(this.compareLeftStage, this.compareRightStage);
+      setupDrag(this.compareRightStage, this.compareLeftStage);
+
+      // Resize observer
+      this.compareResizeObserver = new ResizeObserver(() => {
+        if (!this.compareLeftStage || !this.compareRightStage) return;
+        const lw = leftCanvas.offsetWidth;
+        const lh = leftCanvas.offsetHeight;
+        this.compareLeftStage.width(lw);
+        this.compareLeftStage.height(lh);
+        this.compareRightStage.width(rightCanvas.offsetWidth);
+        this.compareRightStage.height(rightCanvas.offsetHeight);
+        if (this.imageElement) {
+          fitStage(this.compareLeftStage, this.imageElement);
+          fitStage(this.compareRightStage, this.imageElement);
+        }
+      });
+      this.compareResizeObserver.observe(leftCanvas);
+    }); });
+  }
+
+  private exitCompareMode(): void {
+    // Destroy compare stages
+    this.compareResizeObserver?.disconnect();
+    this.compareResizeObserver = null;
+    this.compareLeftStage?.destroy();
+    this.compareLeftStage = null;
+    this.compareRightStage?.destroy();
+    this.compareRightStage = null;
+
+    // Remove wrapper
+    if (this.compareWrapper) {
+      this.compareWrapper.remove();
+      this.compareWrapper = null;
+    }
+
+    // Show main stage
+    const stageContainer = this.stage.container();
+    stageContainer.style.display = '';
+  }
+
+  getGridLayer(): Konva.Layer {
+    return this.gridLayer;
   }
 
   fitToScreen(): void {

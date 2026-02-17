@@ -19,6 +19,7 @@ export type {
   BlurAnnotation,
   HistoryEntry,
   ImageData,
+  OverlayImageData,
   CropBounds,
   ToolType,
   ThemeMode,

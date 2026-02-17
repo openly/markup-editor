@@ -2,6 +2,7 @@ import type {
   Annotation,
   HistoryEntry,
   ImageData,
+  OverlayImageData,
   ToolType,
   EditorStateData,
 } from '../types';
@@ -33,6 +34,16 @@ export interface StoreState {
   // Canvas
   scale: number;
   position: { x: number; y: number };
+
+  // Overlay
+  overlayImages: OverlayImageData[];
+  activeOverlayId: string | null;
+
+  // Grid
+  gridVisible: boolean;
+
+  // Compare
+  compareMode: boolean;
 }
 
 const initialState: StoreState = {
@@ -49,6 +60,10 @@ const initialState: StoreState = {
   highlightColor: '#ffff00',
   scale: 1,
   position: { x: 0, y: 0 },
+  overlayImages: [],
+  activeOverlayId: null,
+  gridVisible: false,
+  compareMode: false,
 };
 
 function getAnnotationTypeName(type: string): string {
@@ -322,6 +337,54 @@ export class Store extends EventEmitter {
     this.state.scale = 1;
     this.state.position = { x: 0, y: 0 };
     this.emit('viewReset');
+  }
+
+  // Overlay
+  addOverlayImage(overlay: OverlayImageData): void {
+    this.state.overlayImages.push(overlay);
+    this.state.activeOverlayId = overlay.id;
+    this.emit('overlayChange', overlay, this.state.overlayImages);
+  }
+
+  removeOverlayImage(id: string): void {
+    this.state.overlayImages = this.state.overlayImages.filter(o => o.id !== id);
+    if (this.state.activeOverlayId === id) {
+      this.state.activeOverlayId = this.state.overlayImages.length > 0
+        ? this.state.overlayImages[0].id
+        : null;
+    }
+    this.emit('overlayChange', this.getActiveOverlay(), this.state.overlayImages);
+  }
+
+  setActiveOverlay(id: string | null): void {
+    if (id === null || this.state.overlayImages.some(o => o.id === id)) {
+      this.state.activeOverlayId = id;
+      this.emit('overlayChange', this.getActiveOverlay(), this.state.overlayImages);
+    }
+  }
+
+  getActiveOverlay(): OverlayImageData | null {
+    return this.state.overlayImages.find(o => o.id === this.state.activeOverlayId) || null;
+  }
+
+  setOverlayOpacity(opacity: number): void {
+    const active = this.getActiveOverlay();
+    if (active) {
+      active.opacity = Math.max(0, Math.min(1, opacity));
+      this.emit('overlayChange', active, this.state.overlayImages);
+    }
+  }
+
+  // Grid
+  toggleGrid(): void {
+    this.state.gridVisible = !this.state.gridVisible;
+    this.emit('gridToggle', this.state.gridVisible);
+  }
+
+  // Compare
+  toggleCompareMode(): void {
+    this.state.compareMode = !this.state.compareMode;
+    this.emit('compareModeChange', this.state.compareMode);
   }
 
   // State persistence

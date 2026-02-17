@@ -659,6 +659,245 @@ export const styles = `
   background: var(--me-surface-hover);
 }
 
+/* Overlay controls */
+.me-overlay-section {
+  position: relative;
+}
+
+.me-overlay-section .me-btn-icon.active {
+  background: var(--me-primary);
+  color: white;
+}
+
+.me-overlay-dropdown {
+  position: absolute;
+  right: 0;
+  top: 100%;
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--me-surface);
+  border: 1px solid var(--me-border);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  z-index: 100;
+  min-width: 220px;
+}
+
+.me-overlay-label {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.me-overlay-desc {
+  font-size: 12px;
+  color: var(--me-text-muted);
+  margin-bottom: 12px;
+}
+
+.me-overlay-name {
+  font-size: 13px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  padding: 4px 8px;
+  background: var(--me-surface-hover);
+  border-radius: 4px;
+  word-break: break-word;
+}
+
+.me-overlay-name-input {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 13px;
+  border: 1px solid var(--me-border);
+  border-radius: 4px;
+  background: var(--me-surface);
+  color: var(--me-text);
+  outline: none;
+  margin-bottom: 8px;
+}
+
+.me-overlay-name-input:focus {
+  border-color: var(--me-primary);
+}
+
+.me-overlay-name-input::placeholder {
+  color: var(--me-text-muted);
+}
+
+.me-overlay-slider-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 12px;
+}
+
+.me-overlay-slider {
+  flex: 1;
+  height: 4px;
+  accent-color: var(--me-primary);
+  cursor: pointer;
+}
+
+.me-overlay-value {
+  font-size: 12px;
+  color: var(--me-text-muted);
+  min-width: 36px;
+  text-align: right;
+}
+
+.me-overlay-upload-btn {
+  width: 100%;
+  justify-content: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+.me-overlay-remove-btn {
+  width: 100%;
+  justify-content: center;
+  gap: 6px;
+  color: #ef4444;
+}
+
+.me-overlay-remove-btn:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* Multi-overlay list */
+.me-overlay-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin: 8px 0;
+}
+
+.me-overlay-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.me-overlay-item:hover {
+  background: var(--me-surface-hover);
+}
+
+.me-overlay-item.active {
+  background: rgba(59, 130, 246, 0.1);
+}
+
+.me-overlay-radio {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid var(--me-border);
+  flex-shrink: 0;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.me-overlay-radio.selected {
+  border-color: var(--me-primary);
+  background: var(--me-primary);
+  box-shadow: inset 0 0 0 2px white;
+}
+
+.me-overlay-item-name {
+  flex: 1;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.me-overlay-delete {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+  background: none;
+  border: none;
+  color: var(--me-text-muted);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.me-overlay-item:hover .me-overlay-delete {
+  opacity: 1;
+}
+
+.me-overlay-delete:hover {
+  color: #ef4444;
+}
+
+/* Grid & Compare button active states */
+#me-grid-btn.active,
+#me-compare-btn.active {
+  background: var(--me-primary);
+  color: white;
+}
+
+/* Compare mode toolbar disabled */
+.me-toolbar.compare-disabled .me-btn-tool {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+/* Compare side-by-side */
+.me-compare-wrapper {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 10;
+  background: var(--me-canvas-bg);
+}
+
+.me-compare-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: relative;
+}
+
+.me-compare-label {
+  position: absolute;
+  top: 8px;
+  left: 12px;
+  z-index: 2;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.85);
+  background: rgba(0,0,0,0.5);
+  padding: 3px 10px;
+  border-radius: 4px;
+  pointer-events: none;
+}
+
+.me-compare-canvas {
+  flex: 1;
+  overflow: hidden;
+  cursor: grab;
+  position: relative;
+  min-height: 0;
+}
+
+.me-compare-divider {
+  width: 2px;
+  background: rgba(255,255,255,0.3);
+  flex-shrink: 0;
+}
+
 /* Icons */
 .me-icon {
   width: 20px;

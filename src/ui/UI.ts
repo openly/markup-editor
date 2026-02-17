@@ -30,6 +30,13 @@ interface UIOptions {
   tools?: ToolType[];
   onImageUpload?: (files: FileList) => void;
   onUrlInput?: (url: string) => void;
+  onOverlayUpload?: (file: File, name?: string) => void;
+  onOverlayRemove?: (id: string) => void;
+  onOverlayOpacityChange?: (opacity: number) => void;
+  onOverlaySetActive?: (id: string) => void;
+  onGridToggle?: () => void;
+  onCompareToggle?: () => void;
+  defaultOverlayOpacity?: number;
 }
 
 export class UI {
@@ -49,6 +56,8 @@ export class UI {
   private toolButtons: Map<string, HTMLButtonElement> = new Map();
   private colorDropdown: HTMLElement | null = null;
   private strokeDropdown: HTMLElement | null = null;
+  private overlayDropdown: HTMLElement | null = null;
+  private overlaySection: HTMLElement | null = null;
 
   constructor(container: HTMLElement, store: Store, options: UIOptions = {}) {
     this.container = container;
@@ -178,6 +187,17 @@ export class UI {
     resetBtn.style.padding = '4px 8px';
     resetBtn.onclick = () => this.store.resetView();
 
+    const divider2 = document.createElement('div');
+    divider2.style.cssText = 'width:1px;height:24px;background:var(--me-border);margin:0 8px';
+
+    const gridBtn = this.createButton('grid', 'Toggle grid (G)');
+    gridBtn.id = 'me-grid-btn';
+    gridBtn.onclick = () => this.options.onGridToggle?.();
+
+    const compareBtn = this.createButton('compare', 'Compare mode');
+    compareBtn.id = 'me-compare-btn';
+    compareBtn.onclick = () => this.options.onCompareToggle?.();
+
     centerSection.appendChild(rotateCcwBtn);
     centerSection.appendChild(rotateCwBtn);
     centerSection.appendChild(divider1);
@@ -186,9 +206,20 @@ export class UI {
     centerSection.appendChild(zoomInBtn);
     centerSection.appendChild(fitBtn);
     centerSection.appendChild(resetBtn);
+    centerSection.appendChild(divider2);
+    centerSection.appendChild(gridBtn);
+    centerSection.appendChild(compareBtn);
+
+    // Right section: Overlay
+    const rightSection = document.createElement('div');
+    rightSection.className = 'me-topbar-section';
+
+    this.overlaySection = this.createOverlaySection();
+    rightSection.appendChild(this.overlaySection);
 
     topBar.appendChild(leftSection);
     topBar.appendChild(centerSection);
+    topBar.appendChild(rightSection);
 
     return topBar;
   }
@@ -449,6 +480,170 @@ export class UI {
     return panel;
   }
 
+  private createOverlaySection(): HTMLElement {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'me-overlay-section';
+
+    const overlayBtn = this.createButton('overlay', 'Overlay image');
+    overlayBtn.onclick = () => {
+      if (this.overlayDropdown) {
+        this.overlayDropdown.remove();
+        this.overlayDropdown = null;
+        return;
+      }
+      this.closeDropdowns();
+      this.showOverlayDropdown(wrapper);
+    };
+
+    wrapper.appendChild(overlayBtn);
+    return wrapper;
+  }
+
+  private showOverlayDropdown(parent: HTMLElement): void {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'me-overlay-dropdown';
+
+    const overlays = this.store.getState().overlayImages;
+    const activeId = this.store.getState().activeOverlayId;
+
+    if (overlays.length > 0) {
+      const title = document.createElement('div');
+      title.className = 'me-overlay-label';
+      title.textContent = 'Overlay Images';
+      dropdown.appendChild(title);
+
+      // Overlay list
+      const list = document.createElement('div');
+      list.className = 'me-overlay-list';
+
+      overlays.forEach((overlay) => {
+        const item = document.createElement('div');
+        item.className = 'me-overlay-item';
+        if (overlay.id === activeId) item.classList.add('active');
+
+        const radio = document.createElement('div');
+        radio.className = 'me-overlay-radio';
+        if (overlay.id === activeId) radio.classList.add('selected');
+
+        const name = document.createElement('span');
+        name.className = 'me-overlay-item-name';
+        name.textContent = overlay.name;
+        name.title = overlay.name;
+
+        const deleteBtn = document.createElement('button');
+        deleteBtn.className = 'me-overlay-delete';
+        deleteBtn.innerHTML = createIcon('x').outerHTML;
+        deleteBtn.onclick = (e) => {
+          e.stopPropagation();
+          this.options.onOverlayRemove?.(overlay.id);
+          dropdown.remove();
+          this.overlayDropdown = null;
+          this.showOverlayDropdown(parent);
+        };
+
+        item.appendChild(radio);
+        item.appendChild(name);
+        item.appendChild(deleteBtn);
+
+        item.onclick = () => {
+          this.options.onOverlaySetActive?.(overlay.id);
+          dropdown.remove();
+          this.overlayDropdown = null;
+          this.showOverlayDropdown(parent);
+        };
+
+        list.appendChild(item);
+      });
+      dropdown.appendChild(list);
+
+      // Opacity slider for active overlay
+      const activeOverlay = overlays.find(o => o.id === activeId);
+      if (activeOverlay) {
+        const opacityLabel = document.createElement('div');
+        opacityLabel.className = 'me-overlay-label';
+        opacityLabel.textContent = 'Opacity';
+        dropdown.appendChild(opacityLabel);
+
+        const sliderRow = document.createElement('div');
+        sliderRow.className = 'me-overlay-slider-row';
+
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        slider.className = 'me-overlay-slider';
+        slider.min = '0';
+        slider.max = '100';
+        slider.value = String(Math.round(activeOverlay.opacity * 100));
+
+        const valueLabel = document.createElement('span');
+        valueLabel.className = 'me-overlay-value';
+        valueLabel.textContent = `${Math.round(activeOverlay.opacity * 100)}%`;
+
+        slider.oninput = () => {
+          const opacity = parseInt(slider.value, 10) / 100;
+          valueLabel.textContent = `${slider.value}%`;
+          this.options.onOverlayOpacityChange?.(opacity);
+        };
+
+        sliderRow.appendChild(slider);
+        sliderRow.appendChild(valueLabel);
+        dropdown.appendChild(sliderRow);
+      }
+
+      // Divider
+      const divider = document.createElement('div');
+      divider.style.cssText = 'height:1px;background:var(--me-border);margin:8px 0';
+      dropdown.appendChild(divider);
+    }
+
+    // Add new overlay section
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'me-overlay-name-input';
+    nameInput.placeholder = 'Overlay name (e.g. Margin Guide)';
+    dropdown.appendChild(nameInput);
+
+    const uploadLabel = document.createElement('label');
+    uploadLabel.className = 'me-btn me-btn-primary me-overlay-upload-btn';
+    uploadLabel.innerHTML = `${createIcon('upload').outerHTML}<span>Add Overlay</span>`;
+
+    const fileInput = document.createElement('input');
+    fileInput.type = 'file';
+    fileInput.accept = 'image/*';
+    fileInput.style.display = 'none';
+    fileInput.onchange = () => {
+      if (fileInput.files && fileInput.files[0]) {
+        const name = nameInput.value.trim() || undefined;
+        this.options.onOverlayUpload?.(fileInput.files[0], name);
+        dropdown.remove();
+        this.overlayDropdown = null;
+      }
+    };
+
+    uploadLabel.appendChild(fileInput);
+    dropdown.appendChild(uploadLabel);
+
+    parent.appendChild(dropdown);
+    this.overlayDropdown = dropdown;
+
+    // Close on outside click
+    const closeHandler = (e: MouseEvent) => {
+      if (!parent.contains(e.target as Node)) {
+        dropdown.remove();
+        this.overlayDropdown = null;
+        document.removeEventListener('mousedown', closeHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
+  }
+
+  private updateOverlayButton(): void {
+    if (!this.overlaySection) return;
+    const btn = this.overlaySection.querySelector('.me-btn-icon') as HTMLButtonElement;
+    if (!btn) return;
+    const hasOverlays = this.store.getState().overlayImages.length > 0;
+    btn.classList.toggle('active', hasOverlays);
+  }
+
   private updatePreviewPanel(): void {
     const panel = this.previewPanel;
     if (!panel) return;
@@ -519,6 +714,10 @@ export class UI {
       this.strokeDropdown.remove();
       this.strokeDropdown = null;
     }
+    if (this.overlayDropdown) {
+      this.overlayDropdown.remove();
+      this.overlayDropdown = null;
+    }
   }
 
   private setupStoreListeners(): void {
@@ -529,6 +728,18 @@ export class UI {
     this.store.on('zoomChange', (scale: number) => this.updateZoomText(scale));
     this.store.on('historyChange', () => this.updateHistoryPanel());
     this.store.on('noteChange', () => this.updateNotesInput());
+    this.store.on('overlayChange', () => this.updateOverlayButton());
+    this.store.on('gridToggle', (visible: boolean) => {
+      const btn = document.getElementById('me-grid-btn');
+      if (btn) btn.classList.toggle('active', visible);
+    });
+    this.store.on('compareModeChange', (enabled: boolean) => {
+      const btn = document.getElementById('me-compare-btn');
+      if (btn) btn.classList.toggle('active', enabled);
+      if (this.toolbar) {
+        this.toolbar.classList.toggle('compare-disabled', enabled);
+      }
+    });
   }
 
   private updateActiveTool(): void {

@@ -5,6 +5,7 @@ import type {
   CustomTool,
   Annotation,
   ImageData,
+  OverlayImageData,
   HistoryEntry,
   ToolType,
   ThemeMode,
@@ -68,6 +69,13 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
       tools: options.tools,
       onImageUpload: (files) => this.handleFileUpload(files),
       onUrlInput: (url) => this.loadImage(url),
+      onOverlayUpload: (file, name) => this.handleOverlayUpload(file, name),
+      onOverlayRemove: (id) => this.removeOverlayImage(id),
+      onOverlayOpacityChange: (opacity) => this.setOverlayOpacity(opacity),
+      onOverlaySetActive: (id) => this.setActiveOverlay(id),
+      onGridToggle: () => this.toggleGrid(),
+      onCompareToggle: () => this.toggleCompareMode(),
+      defaultOverlayOpacity: options.defaultOverlayOpacity,
     });
 
     // Set initial tool settings
@@ -150,6 +158,21 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     this.store.on('textEditRequest', (annotation: Annotation) => {
       this.showTextEditModal(annotation);
     });
+
+    this.store.on('overlayChange', (active: OverlayImageData | null) => {
+      this.emit('overlayChange', active);
+    });
+
+    this.store.on('gridToggle', (visible: boolean) => {
+      this.emit('gridToggle', visible);
+    });
+
+    this.store.on('compareModeChange', (enabled: boolean) => {
+      this.emit('compareModeChange', enabled);
+      if (enabled) {
+        this.store.setTool('select');
+      }
+    });
   }
 
   private setupKeyboardShortcuts(): void {
@@ -186,6 +209,13 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
           e.preventDefault();
           this.store.deleteAnnotation(image.id, selectedId);
         }
+        return;
+      }
+
+      // Grid toggle
+      if (!isMeta && e.key.toLowerCase() === 'g') {
+        e.preventDefault();
+        this.toggleGrid();
         return;
       }
 
@@ -251,6 +281,12 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     if (images.length > 0) {
       this.loadImages(images);
     }
+  }
+
+  private async handleOverlayUpload(file: File, name?: string): Promise<void> {
+    if (!file.type.startsWith('image/')) return;
+    const url = URL.createObjectURL(file);
+    await this.addOverlayImage(url, name || file.name);
   }
 
   private showTextEditModal(annotation: Annotation): void {
@@ -589,6 +625,11 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     stage.width(dims.width);
     stage.height(dims.height);
 
+    // Hide grid layer during export
+    const gridLayer = this.canvas.getGridLayer();
+    const gridWasVisible = gridLayer.visible();
+    gridLayer.visible(false);
+
     const dataUrl = stage.toDataURL({
       mimeType: format === 'png' ? 'image/png' : 'image/jpeg',
       quality,
@@ -600,6 +641,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     });
 
     // Restore original state
+    gridLayer.visible(gridWasVisible);
     stage.width(originalWidth);
     stage.height(originalHeight);
     stage.scale(originalScale);
@@ -645,6 +687,83 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
 
   getNote(): string {
     return this.store.getCurrentImage()?.note || '';
+  }
+
+  // Overlay
+  async setOverlayImage(url: string, name?: string): Promise<void> {
+    // Backwards compat: clears all existing overlays, adds this one
+    if (!this.canvas) throw new Error('No canvas available');
+    this.store.getState().overlayImages.forEach(o => {
+      this.canvas?.removeOverlayById(o.id);
+    });
+    // Reset store overlays manually
+    this.store.getState().overlayImages = [];
+    this.store.getState().activeOverlayId = null;
+    await this.addOverlayImage(url, name);
+  }
+
+  async addOverlayImage(url: string, name?: string): Promise<string> {
+    if (!this.canvas) throw new Error('No canvas available');
+    const id = uid();
+    const opacity = this.options.defaultOverlayOpacity ?? 0.3;
+    await this.canvas.loadOverlayImage(id, url, opacity);
+    this.store.addOverlayImage({ id, url, name: name || 'Overlay', opacity });
+    return id;
+  }
+
+  removeOverlayImage(id?: string): void {
+    if (id) {
+      this.canvas?.removeOverlayById(id);
+      this.store.removeOverlayImage(id);
+    } else {
+      const active = this.store.getActiveOverlay();
+      if (active) {
+        this.canvas?.removeOverlayById(active.id);
+        this.store.removeOverlayImage(active.id);
+      }
+    }
+  }
+
+  getOverlayImage(): OverlayImageData | null {
+    return this.store.getActiveOverlay();
+  }
+
+  getOverlayImages(): OverlayImageData[] {
+    return this.store.getState().overlayImages;
+  }
+
+  setActiveOverlay(id: string | null): void {
+    this.store.setActiveOverlay(id);
+  }
+
+  getActiveOverlay(): OverlayImageData | null {
+    return this.store.getActiveOverlay();
+  }
+
+  setOverlayOpacity(opacity: number): void {
+    this.store.setOverlayOpacity(opacity);
+  }
+
+  getOverlayOpacity(): number {
+    return this.store.getActiveOverlay()?.opacity ?? 0.3;
+  }
+
+  // Grid
+  toggleGrid(): void {
+    this.store.toggleGrid();
+  }
+
+  isGridVisible(): boolean {
+    return this.store.getState().gridVisible;
+  }
+
+  // Compare
+  toggleCompareMode(): void {
+    this.store.toggleCompareMode();
+  }
+
+  isCompareMode(): boolean {
+    return this.store.getState().compareMode;
   }
 
   // Extension

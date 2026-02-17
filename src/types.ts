@@ -117,6 +117,14 @@ export interface ImageData {
   note?: string;
 }
 
+// Overlay image data
+export interface OverlayImageData {
+  id: string;
+  url: string;
+  name: string;
+  opacity: number;
+}
+
 export interface CropBounds {
   x: number;
   y: number;
@@ -172,6 +180,7 @@ export interface MarkupEditorOptions {
   defaultColor?: string;
   defaultStrokeWidth?: number;
   defaultFontSize?: number;
+  defaultOverlayOpacity?: number;
   images?: ImageData[];
   showToolbar?: boolean;
   showHistoryPanel?: boolean;
@@ -278,6 +287,25 @@ export interface MarkupEditorAPI {
   setNote: (note: string) => void;
   getNote: () => string;
 
+  // Overlay
+  setOverlayImage: (url: string, name?: string) => Promise<void>;
+  addOverlayImage: (url: string, name?: string) => Promise<string>;
+  removeOverlayImage: (id?: string) => void;
+  getOverlayImage: () => OverlayImageData | null;
+  getOverlayImages: () => OverlayImageData[];
+  setActiveOverlay: (id: string | null) => void;
+  getActiveOverlay: () => OverlayImageData | null;
+  setOverlayOpacity: (opacity: number) => void;
+  getOverlayOpacity: () => number;
+
+  // Grid
+  toggleGrid: () => void;
+  isGridVisible: () => boolean;
+
+  // Compare
+  toggleCompareMode: () => void;
+  isCompareMode: () => boolean;
+
   // Extension
   registerTool: (tool: CustomTool) => void;
   unregisterTool: (toolId: string) => void;
@@ -303,4 +331,7 @@ export type EditorEvent =
   | 'historyChange'
   | 'zoomChange'
   | 'themeChange'
-  | 'export';
+  | 'export'
+  | 'overlayChange'
+  | 'gridToggle'
+  | 'compareModeChange';
