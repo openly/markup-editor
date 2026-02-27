@@ -20,7 +20,8 @@
     "dev": "vite",
     "build": "vite build && npm run build:types",
     "build:types": "tsc --emitDeclarationOnly --declaration --outDir dist",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "prepare": "npm run build"
   },
   "dependencies": {
     "konva": "^9.3.18"
