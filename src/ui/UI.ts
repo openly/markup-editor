@@ -432,6 +432,7 @@ export class UI {
     const toggleBtn = document.createElement('button');
     toggleBtn.className = 'me-btn me-btn-icon me-collapse-btn';
     toggleBtn.title = 'Toggle history panel';
+    wrapper.classList.add('collapsed');
     toggleBtn.appendChild(createIcon('panelRight'));
     toggleBtn.onclick = () => {
       wrapper.classList.toggle('collapsed');

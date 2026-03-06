@@ -90,11 +90,11 @@ export const styles = `
 }
 
 .me-preview-thumb {
-  width: 56px;
-  height: 40px;
-  object-fit: cover;
+  display: inline-block;
+  width: 50px;
+  height: 50px;
+  object-fit
   border-radius: 4px;
-  background: var(--me-canvas-bg);
 }
 
 .me-preview-label {
@@ -418,7 +418,7 @@ export const styles = `
 .me-stroke-dropdown {
   position: absolute;
   left: 100%;
-  top: 0;
+  bottom: -15px;
   margin-left: 8px;
   padding: 4px;
   background: var(--me-surface);
