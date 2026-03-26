@@ -82,6 +82,16 @@ function getAnnotationTypeName(type: string): string {
 
 export class Store extends EventEmitter {
   private state: StoreState;
+  private initialImageStateByImage: Record<
+    string,
+    {
+      url: string;
+      rotation: number;
+      originalWidth?: number;
+      originalHeight?: number;
+      note?: string;
+    }
+  > = {};
 
   constructor() {
     super();
@@ -96,11 +106,16 @@ export class Store extends EventEmitter {
   setImages(images: ImageData[]): void {
     this.state.images = images;
     this.state.currentImageIndex = 0;
+    this.initialImageStateByImage = {};
+    images.forEach((img) => {
+      this.initialImageStateByImage[img.id] = this.cloneImageState(img);
+    });
     this.emit('imagesChange', images);
   }
 
   addImage(image: ImageData): void {
     this.state.images.push(image);
+    this.initialImageStateByImage[image.id] = this.cloneImageState(image);
     this.emit('imageAdd', image);
   }
 
@@ -146,12 +161,53 @@ export class Store extends EventEmitter {
   }
 
   // Annotation actions
-  addAnnotation(imageId: string, annotation: Annotation): void {
+  private ensureImageState(imageId: string): void {
     if (!this.state.annotationsByImage[imageId]) {
       this.state.annotationsByImage[imageId] = [];
+    }
+    if (!this.state.historyByImage[imageId]) {
       this.state.historyByImage[imageId] = [];
+    }
+    if (typeof this.state.historyIndexByImage[imageId] !== 'number') {
       this.state.historyIndexByImage[imageId] = -1;
     }
+  }
+
+  private cloneImageState(image: ImageData): {
+    url: string;
+    rotation: number;
+    originalWidth?: number;
+    originalHeight?: number;
+    note?: string;
+  } {
+    return {
+      url: image.url,
+      rotation: image.rotation,
+      originalWidth: image.originalWidth,
+      originalHeight: image.originalHeight,
+      note: image.note,
+    };
+  }
+
+  private applyImageState(imageId: string, imageState?: HistoryEntry['imageSnapshot']): void {
+    if (!imageState) return;
+    const image = this.state.images.find((img) => img.id === imageId);
+    if (!image) return;
+    image.url = imageState.url;
+    image.rotation = imageState.rotation;
+    image.originalWidth = imageState.originalWidth;
+    image.originalHeight = imageState.originalHeight;
+    image.note = imageState.note;
+  }
+
+  private emitImageRefresh(imageId: string): void {
+    const idx = this.state.images.findIndex((img) => img.id === imageId);
+    if (idx < 0) return;
+    this.emit('imageChange', this.state.images[idx], idx);
+  }
+
+  addAnnotation(imageId: string, annotation: Annotation): void {
+    this.ensureImageState(imageId);
 
     this.state.annotationsByImage[imageId].push(annotation);
     this.createHistoryEntry(imageId, 'add', annotation);
@@ -198,17 +254,33 @@ export class Store extends EventEmitter {
   }
 
   clearAnnotations(imageId: string): void {
+    this.ensureImageState(imageId);
     this.state.annotationsByImage[imageId] = [];
     this.state.selectedId = null;
     this.emit('annotationsClear', imageId);
+  }
+
+  replaceAnnotations(
+    imageId: string,
+    annotations: Annotation[],
+    action: 'modify' | 'crop' = 'modify',
+    description?: string
+  ): void {
+    this.ensureImageState(imageId);
+    this.state.annotationsByImage[imageId] = annotations;
+    this.state.selectedId = null;
+    this.createHistoryEntry(imageId, action, undefined, description);
+    this.emit('annotationUpdate', null);
   }
 
   // History actions
   private createHistoryEntry(
     imageId: string,
     action: 'add' | 'modify' | 'delete' | 'crop',
-    annotation: Annotation
+    annotation?: Annotation,
+    description?: string
   ): void {
+    this.ensureImageState(imageId);
     const currentIndex = this.state.historyIndexByImage[imageId] ?? -1;
 
     // Truncate redo history
@@ -221,9 +293,17 @@ export class Store extends EventEmitter {
       id: uid(),
       timestamp: Date.now(),
       action,
-      description: `${action === 'add' ? 'Added' : action === 'modify' ? 'Modified' : 'Deleted'} ${getAnnotationTypeName(annotation.type)}`,
-      annotationId: annotation.id,
+      description:
+        description ||
+        (action === 'crop'
+          ? 'Cropped image'
+          : `${action === 'add' ? 'Added' : action === 'modify' ? 'Modified' : 'Deleted'} ${getAnnotationTypeName(annotation?.type || 'annotation')}`),
+      annotationId: annotation?.id,
       snapshot: JSON.parse(JSON.stringify(this.state.annotationsByImage[imageId])),
+      imageSnapshot: (() => {
+        const image = this.state.images.find((img) => img.id === imageId);
+        return image ? this.cloneImageState(image) : undefined;
+      })(),
     };
 
     this.state.historyByImage[imageId].push(entry);
@@ -239,12 +319,16 @@ export class Store extends EventEmitter {
       this.state.annotationsByImage[imageId] = JSON.parse(
         JSON.stringify(previousEntry.snapshot)
       );
+      this.applyImageState(imageId, previousEntry.imageSnapshot);
       this.state.selectedId = null;
+      this.emitImageRefresh(imageId);
       this.emit('historyChange', this.getHistory(imageId));
     } else if (currentIndex === 0) {
       this.state.historyIndexByImage[imageId] = -1;
       this.state.annotationsByImage[imageId] = [];
+      this.applyImageState(imageId, this.initialImageStateByImage[imageId]);
       this.state.selectedId = null;
+      this.emitImageRefresh(imageId);
       this.emit('historyChange', this.getHistory(imageId));
     }
   }
@@ -258,6 +342,8 @@ export class Store extends EventEmitter {
       this.state.annotationsByImage[imageId] = JSON.parse(
         JSON.stringify(nextEntry.snapshot)
       );
+      this.applyImageState(imageId, nextEntry.imageSnapshot);
+      this.emitImageRefresh(imageId);
       this.emit('historyChange', this.getHistory(imageId));
     }
   }
@@ -287,12 +373,16 @@ export class Store extends EventEmitter {
       this.state.annotationsByImage[imageId] = JSON.parse(
         JSON.stringify(history[index].snapshot)
       );
+      this.applyImageState(imageId, history[index].imageSnapshot);
       this.state.selectedId = null;
+      this.emitImageRefresh(imageId);
       this.emit('historyChange', history);
     } else if (index === -1) {
       this.state.historyIndexByImage[imageId] = -1;
       this.state.annotationsByImage[imageId] = [];
+      this.applyImageState(imageId, this.initialImageStateByImage[imageId]);
       this.state.selectedId = null;
+      this.emitImageRefresh(imageId);
       this.emit('historyChange', history);
     }
   }
@@ -427,6 +517,10 @@ export class Store extends EventEmitter {
     this.state.annotationsByImage = JSON.parse(JSON.stringify(data.annotationsByImage));
     this.state.historyByImage = JSON.parse(JSON.stringify(data.historyByImage));
     this.state.historyIndexByImage = { ...data.historyIndexByImage };
+    this.initialImageStateByImage = {};
+    this.state.images.forEach((img) => {
+      this.initialImageStateByImage[img.id] = this.cloneImageState(img);
+    });
 
     // Navigate to saved image index
     if (data.currentImageIndex >= 0 && data.currentImageIndex < this.state.images.length) {

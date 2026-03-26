@@ -2,6 +2,7 @@ import Konva from 'konva';
 import type { Store } from './Store';
 import type {
   Annotation,
+  CropBounds,
   OverlayImageData,
   ToolType,
   PenAnnotation,
@@ -16,6 +17,10 @@ import type {
 import { uid } from '../utils/uid';
 
 export class Canvas {
+  private static readonly SHAPE_MIN_SIZE = 5;
+  private static readonly LINE_MIN_LENGTH = 10;
+  private static readonly CROP_STROKE = '#0ea5e9';
+
   private container: HTMLElement;
   private store: Store;
   private stage: Konva.Stage;
@@ -169,6 +174,26 @@ export class Canvas {
     return { x, y };
   }
 
+  private clearPreviewShape(): void {
+    if (this.previewShape) {
+      this.previewShape.destroy();
+      this.previewShape = null;
+      this.previewLayer.batchDraw();
+    }
+  }
+
+  private getRectFromPoints(
+    start: { x: number; y: number },
+    end: { x: number; y: number }
+  ): { x: number; y: number; width: number; height: number } {
+    return {
+      x: Math.min(start.x, end.x),
+      y: Math.min(start.y, end.y),
+      width: Math.abs(end.x - start.x),
+      height: Math.abs(end.y - start.y),
+    };
+  }
+
   private handleMouseDown(_e: Konva.KonvaEventObject<MouseEvent | TouchEvent>): void {
     if (this.compareMode) return;
 
@@ -180,8 +205,6 @@ export class Canvas {
       this.stage.draggable(true);
       return;
     }
-
-    if (tool === 'crop') return;
 
     const point = this.getPointerPosition();
     if (!point) return;
@@ -215,10 +238,7 @@ export class Canvas {
     if (!point) return;
 
     // Clear previous preview
-    if (this.previewShape) {
-      this.previewShape.destroy();
-      this.previewShape = null;
-    }
+    this.clearPreviewShape();
 
     if (tool === 'pen' || tool === 'highlight') {
       this.currentPoints.push(point.x, point.y);
@@ -233,13 +253,12 @@ export class Canvas {
         globalCompositeOperation: tool === 'highlight' ? 'multiply' : 'source-over',
       });
     } else if (tool === 'rectangle' || tool === 'blur') {
-      const width = point.x - this.startPoint.x;
-      const height = point.y - this.startPoint.y;
+      const rect = this.getRectFromPoints(this.startPoint, point);
       this.previewShape = new Konva.Rect({
-        x: Math.min(this.startPoint.x, point.x),
-        y: Math.min(this.startPoint.y, point.y),
-        width: Math.abs(width),
-        height: Math.abs(height),
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
         stroke: tool === 'blur' ? '#666' : state.color,
         strokeWidth: tool === 'blur' ? 2 : state.strokeWidth,
         dash: [5, 5],
@@ -274,6 +293,18 @@ export class Canvas {
         strokeWidth: state.strokeWidth,
         dash: [5, 5],
       });
+    } else if (tool === 'crop') {
+      const rect = this.getRectFromPoints(this.startPoint, point);
+      this.previewShape = new Konva.Rect({
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        stroke: Canvas.CROP_STROKE,
+        strokeWidth: 2,
+        dash: [8, 4],
+        fill: 'rgba(14,165,233,0.12)',
+      });
     }
 
     if (this.previewShape) {
@@ -302,11 +333,7 @@ export class Canvas {
     if (!point) return;
 
     // Clear preview
-    if (this.previewShape) {
-      this.previewShape.destroy();
-      this.previewShape = null;
-    }
-    this.previewLayer.batchDraw();
+    this.clearPreviewShape();
 
     let annotation: Annotation | null = null;
 
@@ -342,9 +369,8 @@ export class Canvas {
         break;
 
       case 'rectangle': {
-        const width = point.x - this.startPoint.x;
-        const height = point.y - this.startPoint.y;
-        if (Math.abs(width) > 5 && Math.abs(height) > 5) {
+        const rect = this.getRectFromPoints(this.startPoint, point);
+        if (rect.width > Canvas.SHAPE_MIN_SIZE && rect.height > Canvas.SHAPE_MIN_SIZE) {
           annotation = {
             id: uid(),
             type: 'rectangle',
@@ -352,10 +378,10 @@ export class Canvas {
             createdAt: Date.now(),
             color: state.color,
             opacity: 1,
-            x: Math.min(this.startPoint.x, point.x),
-            y: Math.min(this.startPoint.y, point.y),
-            width: Math.abs(width),
-            height: Math.abs(height),
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
             strokeWidth: state.strokeWidth,
           } as RectAnnotation;
         }
@@ -365,7 +391,7 @@ export class Canvas {
       case 'ellipse': {
         const width = point.x - this.startPoint.x;
         const height = point.y - this.startPoint.y;
-        if (Math.abs(width) > 5 && Math.abs(height) > 5) {
+        if (Math.abs(width) > Canvas.SHAPE_MIN_SIZE && Math.abs(height) > Canvas.SHAPE_MIN_SIZE) {
           annotation = {
             id: uid(),
             type: 'ellipse',
@@ -385,7 +411,7 @@ export class Canvas {
 
       case 'arrow': {
         const distance = Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y);
-        if (distance > 10) {
+        if (distance > Canvas.LINE_MIN_LENGTH) {
           annotation = {
             id: uid(),
             type: 'arrow',
@@ -402,7 +428,7 @@ export class Canvas {
 
       case 'line': {
         const distance = Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y);
-        if (distance > 10) {
+        if (distance > Canvas.LINE_MIN_LENGTH) {
           annotation = {
             id: uid(),
             type: 'line',
@@ -434,9 +460,8 @@ export class Canvas {
         break;
 
       case 'blur': {
-        const width = point.x - this.startPoint.x;
-        const height = point.y - this.startPoint.y;
-        if (Math.abs(width) > 10 && Math.abs(height) > 10) {
+        const rect = this.getRectFromPoints(this.startPoint, point);
+        if (rect.width > Canvas.LINE_MIN_LENGTH && rect.height > Canvas.LINE_MIN_LENGTH) {
           annotation = {
             id: uid(),
             type: 'blur',
@@ -444,12 +469,20 @@ export class Canvas {
             createdAt: Date.now(),
             color: '#000000',
             opacity: 1,
-            x: Math.min(this.startPoint.x, point.x),
-            y: Math.min(this.startPoint.y, point.y),
-            width: Math.abs(width),
-            height: Math.abs(height),
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
             mode: 'blur',
           } as BlurAnnotation;
+        }
+        break;
+      }
+
+      case 'crop': {
+        const rect = this.getRectFromPoints(this.startPoint, point);
+        if (rect.width > Canvas.LINE_MIN_LENGTH && rect.height > Canvas.LINE_MIN_LENGTH) {
+          this.applyCrop(rect);
         }
         break;
       }
@@ -457,6 +490,10 @@ export class Canvas {
 
     if (annotation) {
       this.store.addAnnotation(image.id, annotation);
+      if (tool === 'text') {
+        this.store.selectAnnotation(annotation.id);
+        this.store.setTool('select');
+      }
     }
 
     this.isDrawing = false;
@@ -474,6 +511,29 @@ export class Canvas {
     const shape = this.shapeRefs.get(id);
     if (shape) {
       this.transformer.nodes([shape]);
+      this.transformer.rotateEnabled(false);
+      this.transformer.keepRatio(false);
+      if (shape instanceof Konva.Text) {
+        this.transformer.enabledAnchors([
+          'top-left',
+          'top-right',
+          'bottom-left',
+          'bottom-right',
+          'middle-left',
+          'middle-right',
+        ]);
+      } else {
+        this.transformer.enabledAnchors([
+          'top-left',
+          'top-center',
+          'top-right',
+          'middle-left',
+          'middle-right',
+          'bottom-left',
+          'bottom-center',
+          'bottom-right',
+        ]);
+      }
       this.transformer.visible(true);
     }
     this.annotationLayer.batchDraw();
@@ -535,6 +595,9 @@ export class Canvas {
     if (image) {
       this.loadImage(image.url).then(() => {
         this.renderAnnotations();
+        if (this.compareMode) {
+          this.refreshCompareView();
+        }
       });
     }
   }
@@ -581,6 +644,7 @@ export class Canvas {
   }
 
   removeAllOverlays(): void {
+    if (this.overlayNodes.size === 0) return;
     this.overlayNodes.forEach(node => node.destroy());
     this.overlayNodes.clear();
     this.overlayLayer.batchDraw();
@@ -599,6 +663,9 @@ export class Canvas {
       }
     }
     this.overlayLayer.batchDraw();
+    if (this.compareMode) {
+      this.refreshCompareView();
+    }
   }
 
   // Grid
@@ -637,8 +704,17 @@ export class Canvas {
     }
   }
 
+  private refreshCompareView(): void {
+    if (!this.compareMode) return;
+    this.exitCompareMode();
+    this.enterCompareMode();
+  }
+
   private enterCompareMode(): void {
     if (!this.imageElement) return;
+    if (this.compareWrapper || this.compareLeftStage || this.compareRightStage) {
+      this.exitCompareMode();
+    }
 
     const activeOverlay = this.store.getActiveOverlay();
     const activeNode = activeOverlay ? this.overlayNodes.get(activeOverlay.id) : null;
@@ -957,10 +1033,16 @@ export class Canvas {
           radiusY: Math.max(5, ellipse.radiusY() * scaleY),
         });
       } else if (annotation.type === 'text') {
+        const textNode = node as Konva.Text;
+        const baseWidth = typeof annotation.width === 'number'
+          ? annotation.width
+          : Math.max(20, textNode.width());
+        const baseFontSize = Math.max(1, annotation.fontSize || textNode.fontSize());
         this.store.updateAnnotation(image.id, annotation.id, {
           x: node.x(),
           y: node.y(),
-          width: Math.max(20, node.width() * scaleX),
+          width: Math.max(20, baseWidth * scaleX),
+          fontSize: Math.max(8, baseFontSize * scaleY),
         });
       }
     };
@@ -1165,6 +1247,133 @@ export class Canvas {
 
   getStage(): Konva.Stage {
     return this.stage;
+  }
+
+  private applyCrop(bounds: CropBounds): void {
+    if (!this.imageElement) return;
+    const image = this.store.getCurrentImage();
+    if (!image) return;
+
+    const x = Math.max(0, Math.min(bounds.x, this.imageElement.width - 1));
+    const y = Math.max(0, Math.min(bounds.y, this.imageElement.height - 1));
+    const width = Math.max(1, Math.min(bounds.width, this.imageElement.width - x));
+    const height = Math.max(1, Math.min(bounds.height, this.imageElement.height - y));
+    if (width < 2 || height < 2) return;
+
+    const cropCanvas = document.createElement('canvas');
+    cropCanvas.width = Math.round(width);
+    cropCanvas.height = Math.round(height);
+    const ctx = cropCanvas.getContext('2d');
+    if (!ctx) return;
+
+    ctx.drawImage(
+      this.imageElement,
+      x,
+      y,
+      width,
+      height,
+      0,
+      0,
+      cropCanvas.width,
+      cropCanvas.height
+    );
+
+    let croppedUrl = '';
+    try {
+      croppedUrl = cropCanvas.toDataURL('image/png');
+    } catch (e) {
+      console.error('Crop failed while exporting cropped image', e);
+      return;
+    }
+
+    image.url = croppedUrl;
+    image.originalWidth = cropCanvas.width;
+    image.originalHeight = cropCanvas.height;
+
+    const state = this.store.getState();
+    const croppedAnnotations = this.store
+      .getAnnotations(image.id)
+      .map((annotation) => this.cropAnnotation(annotation, { x, y, width, height }))
+      .filter((annotation): annotation is Annotation => !!annotation);
+
+    // Overlays no longer align to the cropped image.
+    this.removeAllOverlays();
+    state.overlayImages = [];
+    state.activeOverlayId = null;
+
+    this.store.replaceAnnotations(image.id, croppedAnnotations, 'crop', 'Cropped image');
+    this.store.selectAnnotation(null);
+    this.store.setTool('select');
+    this.store.emit('imageChange', image, state.currentImageIndex);
+  }
+
+  private cropAnnotation(annotation: Annotation, crop: CropBounds): Annotation | null {
+    const x1 = crop.x;
+    const y1 = crop.y;
+    const x2 = crop.x + crop.width;
+    const y2 = crop.y + crop.height;
+    const inside = (x: number, y: number): boolean => x >= x1 && x <= x2 && y >= y1 && y <= y2;
+    const clamp = (v: number, min: number, max: number): number => Math.max(min, Math.min(max, v));
+    const shiftX = (v: number): number => v - crop.x;
+    const shiftY = (v: number): number => v - crop.y;
+
+    if (annotation.type === 'rectangle' || annotation.type === 'blur') {
+      const ax1 = annotation.x;
+      const ay1 = annotation.y;
+      const ax2 = annotation.x + annotation.width;
+      const ay2 = annotation.y + annotation.height;
+      const ix1 = Math.max(ax1, x1);
+      const iy1 = Math.max(ay1, y1);
+      const ix2 = Math.min(ax2, x2);
+      const iy2 = Math.min(ay2, y2);
+      if (ix2 <= ix1 || iy2 <= iy1) return null;
+      return { ...annotation, x: shiftX(ix1), y: shiftY(iy1), width: ix2 - ix1, height: iy2 - iy1 };
+    }
+
+    if (annotation.type === 'ellipse') {
+      const minX = annotation.x - annotation.radiusX;
+      const maxX = annotation.x + annotation.radiusX;
+      const minY = annotation.y - annotation.radiusY;
+      const maxY = annotation.y + annotation.radiusY;
+      if (maxX < x1 || minX > x2 || maxY < y1 || minY > y2) return null;
+      return { ...annotation, x: shiftX(annotation.x), y: shiftY(annotation.y) };
+    }
+
+    if (annotation.type === 'text') {
+      if (!inside(annotation.x, annotation.y)) return null;
+      return { ...annotation, x: shiftX(annotation.x), y: shiftY(annotation.y) };
+    }
+
+    if (annotation.type === 'arrow' || annotation.type === 'line') {
+      const [ax, ay, bx, by] = annotation.points;
+      const intersects = !(
+        Math.max(ax, bx) < x1 ||
+        Math.min(ax, bx) > x2 ||
+        Math.max(ay, by) < y1 ||
+        Math.min(ay, by) > y2
+      );
+      if (!intersects) return null;
+      const cax = clamp(ax, x1, x2);
+      const cay = clamp(ay, y1, y2);
+      const cbx = clamp(bx, x1, x2);
+      const cby = clamp(by, y1, y2);
+      return { ...annotation, points: [shiftX(cax), shiftY(cay), shiftX(cbx), shiftY(cby)] };
+    }
+
+    if (annotation.type === 'pen' || annotation.type === 'highlight') {
+      const out: number[] = [];
+      let hasInside = false;
+      for (let i = 0; i < annotation.points.length; i += 2) {
+        const px = annotation.points[i];
+        const py = annotation.points[i + 1];
+        hasInside = hasInside || inside(px, py);
+        out.push(shiftX(clamp(px, x1, x2)), shiftY(clamp(py, y1, y2)));
+      }
+      if (!hasInside || out.length < 4) return null;
+      return { ...annotation, points: out };
+    }
+
+    return annotation;
   }
 
   getImageElement(): HTMLImageElement | null {
