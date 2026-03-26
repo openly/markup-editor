@@ -104,6 +104,13 @@ export interface HistoryEntry {
   description: string;
   annotationId?: string;
   snapshot: Annotation[];
+  imageSnapshot?: {
+    url: string;
+    rotation: number;
+    originalWidth?: number;
+    originalHeight?: number;
+    note?: string;
+  };
 }
 
 // Image data
