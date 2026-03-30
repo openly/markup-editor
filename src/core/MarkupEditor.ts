@@ -362,6 +362,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     this.unwatchTheme?.();
     this.canvas?.destroy();
     this.ui.destroy();
+    this.store.reset();
     this.removeAllListeners();
   }
 

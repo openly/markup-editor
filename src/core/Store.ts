@@ -102,10 +102,19 @@ export class Store extends EventEmitter {
     return this.state;
   }
 
+  reset(): void {
+    this.state = { ...initialState, annotationsByImage: {}, historyByImage: {}, historyIndexByImage: {}, overlayImages: [], position: { x: 0, y: 0 } };
+    this.initialImageStateByImage = {};
+  }
+
   // Image actions
   setImages(images: ImageData[]): void {
     this.state.images = images;
     this.state.currentImageIndex = 0;
+    this.state.annotationsByImage = {};
+    this.state.historyByImage = {};
+    this.state.historyIndexByImage = {};
+    this.state.selectedId = null;
     this.initialImageStateByImage = {};
     images.forEach((img) => {
       this.initialImageStateByImage[img.id] = this.cloneImageState(img);
