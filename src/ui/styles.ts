@@ -373,7 +373,7 @@ export const styles = `
 .me-color-dropdown {
   position: absolute;
   left: 100%;
-  top: 0;
+  bottom: 0;
   margin-left: 8px;
   padding: 8px;
   background: var(--me-surface);
