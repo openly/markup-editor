@@ -208,7 +208,7 @@ export class UI {
     centerSection.appendChild(resetBtn);
     centerSection.appendChild(divider2);
     centerSection.appendChild(gridBtn);
-    centerSection.appendChild(compareBtn);
+    // centerSection.appendChild(compareBtn);
 
     // Right section: Overlay
     const rightSection = document.createElement('div');

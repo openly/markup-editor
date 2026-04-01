@@ -56,7 +56,7 @@ const initialState: StoreState = {
   currentTool: 'select',
   color: '#ff0000',
   strokeWidth: 3,
-  fontSize: 24,
+  fontSize: 48,
   highlightColor: '#ffff00',
   scale: 1,
   position: { x: 0, y: 0 },

@@ -162,8 +162,22 @@ export class Canvas {
     const pointer = this.stage.getPointerPosition();
     if (!pointer) return null;
 
+    // Convert screen coords to layer coords
     let x = (pointer.x - state.position.x) / state.scale;
     let y = (pointer.y - state.position.y) / state.scale;
+
+    // Un-rotate to get image-space coords when image is rotated
+    const currentImage = this.store.getCurrentImage();
+    const rotation = currentImage ? currentImage.rotation : 0;
+    if (rotation && this.imageElement) {
+      const cx = this.imageElement.width / 2;
+      const cy = this.imageElement.height / 2;
+      const rad = (-rotation * Math.PI) / 180;
+      const dx = x - cx;
+      const dy = y - cy;
+      x = cx + dx * Math.cos(rad) - dy * Math.sin(rad);
+      y = cy + dx * Math.sin(rad) + dy * Math.cos(rad);
+    }
 
     // Clamp to image bounds
     if (this.imageElement) {
@@ -282,8 +296,8 @@ export class Canvas {
         stroke: state.color,
         strokeWidth: state.strokeWidth,
         fill: state.color,
-        pointerLength: state.strokeWidth * 4,
-        pointerWidth: state.strokeWidth * 3,
+        pointerLength: state.strokeWidth * 6 + 4,
+        pointerWidth: state.strokeWidth * 5 + 4,
         dash: [5, 5],
       });
     } else if (tool === 'line') {
@@ -572,15 +586,26 @@ export class Canvas {
 
         this.imageNode = new Konva.Image({
           image: img,
-          x: 0,
-          y: 0,
+          x: img.width / 2,
+          y: img.height / 2,
+          offsetX: img.width / 2,
+          offsetY: img.height / 2,
         });
+
+        // Apply stored rotation before adding to layer
+        const currentImg = this.store.getCurrentImage();
+        const rotation = currentImg?.rotation || 0;
+        if (rotation) {
+          this.imageNode.rotation(rotation);
+        }
+        this.applyLayerRotation(this.annotationLayer, rotation);
+        this.applyLayerRotation(this.previewLayer, rotation);
 
         this.imageLayer.add(this.imageNode);
         this.imageLayer.moveToBottom();
         this.imageLayer.batchDraw();
 
-        // Fit to screen
+        // Fit to screen (accounts for rotation)
         this.fitToScreen();
         this.renderGrid();
         resolve();
@@ -602,11 +627,25 @@ export class Canvas {
     }
   }
 
+  private applyLayerRotation(layer: Konva.Layer, rotation: number): void {
+    if (!this.imageElement) return;
+    const cx = this.imageElement.width / 2;
+    const cy = this.imageElement.height / 2;
+    layer.offset({ x: cx, y: cy });
+    layer.position({ x: cx, y: cy });
+    layer.rotation(rotation);
+  }
+
   private updateImageRotation(): void {
     const image = this.store.getCurrentImage();
     if (this.imageNode && image) {
       this.imageNode.rotation(image.rotation);
+      this.applyLayerRotation(this.annotationLayer, image.rotation);
+      this.applyLayerRotation(this.previewLayer, image.rotation);
       this.imageLayer.batchDraw();
+      this.annotationLayer.batchDraw();
+      this.previewLayer.batchDraw();
+      this.fitToScreen();
     }
   }
 
@@ -678,8 +717,8 @@ export class Canvas {
     const w = this.imageElement.width;
     const h = this.imageElement.height;
     const lineStyle = {
-      stroke: 'rgba(255,255,255,0.6)',
-      strokeWidth: 1,
+      stroke: 'rgba(0,0,0,0.6)',
+      strokeWidth: 3,
       dash: [6, 4],
       listening: false,
     };
@@ -905,15 +944,25 @@ export class Canvas {
     const padding = 40;
     const stageWidth = this.stage.width();
     const stageHeight = this.stage.height();
-    const imageWidth = this.imageElement.width;
-    const imageHeight = this.imageElement.height;
+    const origWidth = this.imageElement.width;
+    const origHeight = this.imageElement.height;
+
+    // Account for rotation: swap dimensions for 90/270 degrees
+    const currentImage = this.store.getCurrentImage();
+    const rotation = currentImage ? currentImage.rotation : 0;
+    const isRotated = rotation === 90 || rotation === 270;
+    const imageWidth = isRotated ? origHeight : origWidth;
+    const imageHeight = isRotated ? origWidth : origHeight;
 
     const scaleX = (stageWidth - padding * 2) / imageWidth;
     const scaleY = (stageHeight - padding * 2) / imageHeight;
     const scale = Math.min(scaleX, scaleY, 1);
 
-    const x = (stageWidth - imageWidth * scale) / 2;
-    const y = (stageHeight - imageHeight * scale) / 2;
+    // When rotated, the bounding box shifts in layer coords due to offset-based rotation
+    const bbLeft = isRotated ? (origWidth - origHeight) / 2 : 0;
+    const bbTop = isRotated ? (origHeight - origWidth) / 2 : 0;
+    const x = (stageWidth - imageWidth * scale) / 2 - bbLeft * scale;
+    const y = (stageHeight - imageHeight * scale) / 2 - bbTop * scale;
 
     this.store.setScale(scale);
     this.store.setPosition({ x, y });
@@ -1117,8 +1166,8 @@ export class Canvas {
           strokeWidth: annotation.strokeWidth,
           fill: annotation.color,
           opacity: annotation.opacity,
-          pointerLength: annotation.strokeWidth * 4,
-          pointerWidth: annotation.strokeWidth * 3,
+          pointerLength: annotation.strokeWidth * 6 + 4,
+          pointerWidth: annotation.strokeWidth * 5 + 4,
           lineCap: 'round',
           lineJoin: 'round',
           hitStrokeWidth: Math.max(annotation.strokeWidth, 15),
