@@ -457,7 +457,9 @@ export class Canvas {
         break;
       }
 
-      case 'text':
+      case 'text': {
+        // Convert screen fontSize to image-space so text appears readable at current zoom
+        const effectiveFontSize = Math.round(state.fontSize / state.scale);
         annotation = {
           id: uid(),
           type: 'text',
@@ -468,10 +470,11 @@ export class Canvas {
           x: this.startPoint.x,
           y: this.startPoint.y,
           text: 'Text',
-          fontSize: state.fontSize,
+          fontSize: effectiveFontSize,
           fontFamily: 'Arial',
         } as TextAnnotation;
         break;
+      }
 
       case 'blur': {
         const rect = this.getRectFromPoints(this.startPoint, point);
