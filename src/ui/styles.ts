@@ -44,6 +44,12 @@ export const styles = `
   flex-shrink: 0;
   padding: 6px 12px;
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.me-preview-panel .me-preview-scroll {
+  width: 100%;
 }
 
 .me-preview-scroll {
@@ -93,7 +99,7 @@ export const styles = `
   display: inline-block;
   width: 50px;
   height: 50px;
-  object-fit
+  object-fit: cover;
   border-radius: 4px;
 }
 
@@ -295,11 +301,12 @@ export const styles = `
   background: transparent;
   color: var(--me-text);
   cursor: pointer;
-  transition: background 0.15s;
+  transition: background 0.15s, color 0.15s;
 }
 
 .me-btn:hover:not(:disabled) {
   background: var(--me-surface-hover);
+  color: var(--me-primary);
 }
 
 .me-btn:disabled {
@@ -316,6 +323,7 @@ export const styles = `
 
 .me-btn-primary:hover:not(:disabled) {
   background: var(--me-primary-hover);
+  color: white;
 }
 
 .me-btn-icon {
@@ -331,6 +339,11 @@ export const styles = `
 
 .me-btn-tool.active {
   background: var(--me-primary);
+  color: white;
+}
+
+.me-btn-tool.active:hover {
+  background: var(--me-primary-hover);
   color: white;
 }
 
@@ -924,6 +937,21 @@ export const styles = `
   stroke: none;
 }
 
+/* History close button — hidden on desktop, shown on small screens */
+.me-history-close-btn {
+  display: none;
+}
+
+/* Topbar kebab menu */
+.me-topbar-kebab-btn {
+  display: none;
+}
+
+.me-topbar-kebab-btn .me-icon circle {
+  fill: currentColor;
+  stroke: none;
+}
+
 .me-kebab-dropdown {
   position: fixed;
   background: var(--me-surface);
@@ -1047,6 +1075,26 @@ export const styles = `
   .me-notes-panel {
     padding: 8px;
   }
+
+  /* Scale down preview thumbs */
+  .me-preview-thumb {
+    width: 42px;
+    height: 42px;
+  }
+
+  .me-preview-item {
+    padding: 3px;
+    gap: 2px;
+  }
+
+  .me-preview-label {
+    font-size: 9px;
+    max-width: 46px;
+  }
+
+  .me-preview-panel {
+    padding: 4px 8px;
+  }
 }
 
 /* ----- Small: container < 540px ----- */
@@ -1062,11 +1110,13 @@ export const styles = `
   }
 
   .me-topbar-center {
-    order: 3;
-    width: 100%;
+    order: 0;
+    width: auto;
     justify-content: center;
     gap: 2px;
-    padding-top: 2px;
+    padding-top: 0;
+    flex: 1;
+    min-width: 0;
   }
 
   .me-image-name {
@@ -1094,10 +1144,35 @@ export const styles = `
     height: 16px;
   }
 
+  /* Preview thumbs small */
+  .me-preview-thumb {
+    width: 32px;
+    height: 32px;
+  }
+
+  .me-preview-item {
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .me-preview-label {
+    font-size: 8px;
+    max-width: 36px;
+  }
+
+  .me-preview-panel {
+    padding: 3px 6px;
+  }
+
+  .me-preview-scroll {
+    gap: 4px;
+  }
+
   /* Switch toolbar to horizontal top */
   .me-main {
     flex-direction: column;
     overflow: visible;
+    position: relative;
   }
 
   .me-toolbar {
@@ -1166,9 +1241,56 @@ export const styles = `
     z-index: 200;
   }
 
-  /* Hide history panel */
+  /* History panel: slide-over drawer on small screens */
   .me-history-wrapper {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 60;
+    border-left: 1px solid var(--me-border);
+    box-shadow: -4px 0 16px rgba(0,0,0,0.15);
+  }
+
+  .me-history-wrapper.collapsed {
+    box-shadow: none;
+    border-left: none;
+  }
+
+  .me-history-wrapper .me-history-panel {
+    width: 200px;
+  }
+
+  .me-history-wrapper.collapsed .me-history-panel {
+    width: 0;
+  }
+
+  /* Hide the toggle strip — topbar has undo/redo/history buttons instead */
+  .me-history-toggle {
     display: none;
+  }
+
+  /* Show close button inside history panel header */
+  .me-history-close-btn {
+    display: flex;
+  }
+
+  /* History starts collapsed on small screens */
+  .me-history-wrapper.collapsed {
+    pointer-events: none;
+  }
+
+  .me-history-wrapper.collapsed .me-history-panel {
+    pointer-events: none;
+  }
+
+  /* When opened, make it interactive */
+  .me-history-wrapper:not(.collapsed) {
+    pointer-events: auto;
+  }
+
+  .me-history-wrapper:not(.collapsed) .me-history-panel {
+    pointer-events: auto;
   }
 
   .me-notes-panel {
@@ -1247,6 +1369,11 @@ export const styles = `
     padding: 2px 4px;
   }
 
+  /* Hide overlay section on extra small */
+  .me-overlay-section {
+    display: none;
+  }
+
   .me-btn-icon {
     width: 26px;
     height: 26px;
@@ -1273,16 +1400,34 @@ export const styles = `
   }
 
   .me-zoom-text {
-    font-size: 10px;
-    min-width: 30px;
+    display: none;
   }
 
   .me-notes-panel {
     display: none;
   }
 
+  /* Preview: show tiny thumbs, no labels */
+  .me-preview-thumb {
+    width: 26px;
+    height: 26px;
+  }
+
+  .me-preview-label {
+    display: none;
+  }
+
+  .me-preview-item {
+    padding: 2px;
+    gap: 0;
+  }
+
   .me-preview-panel {
-    display: none !important;
+    padding: 2px 4px;
+  }
+
+  .me-preview-scroll {
+    gap: 3px;
   }
 
   .me-toolbar {
@@ -1349,6 +1494,7 @@ export const styles = `
     .me-main {
       flex-direction: column;
       overflow: visible;
+      position: relative;
     }
 
     .me-toolbar {
@@ -1366,6 +1512,25 @@ export const styles = `
       z-index: 50;
     }
 
+    .me-history-wrapper {
+      position: absolute;
+      top: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 60;
+      border-left: 1px solid var(--me-border);
+      box-shadow: -4px 0 16px rgba(0,0,0,0.15);
+    }
+
+    .me-history-wrapper.collapsed {
+      box-shadow: none;
+      border-left: none;
+    }
+
+    .me-history-wrapper .me-history-panel {
+      width: 200px;
+    }
+
     .me-toolbar-divider {
       width: 1px;
       height: 24px;
@@ -1380,10 +1545,6 @@ export const styles = `
       display: flex;
       align-items: center;
       position: static;
-    }
-
-    .me-history-wrapper {
-      display: none;
     }
 
     .me-modal-textarea {

@@ -3,7 +3,7 @@ import type { ThemeColors, ThemeMode } from '../types';
 export const lightTheme: ThemeColors = {
   background: '#f3f4f6',
   surface: '#ffffff',
-  surfaceHover: '#f9fafb',
+  surfaceHover: '#e5e7eb',
   border: '#e5e7eb',
   text: '#111827',
   textMuted: '#6b7280',
