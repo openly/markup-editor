@@ -58,6 +58,9 @@ export class UI {
   private strokeDropdown: HTMLElement | null = null;
   private overlayDropdown: HTMLElement | null = null;
   private overlaySection: HTMLElement | null = null;
+  private kebabBtn: HTMLButtonElement | null = null;
+  private kebabDropdown: HTMLElement | null = null;
+  private toolbarResizeObserver: ResizeObserver | null = null;
 
   constructor(container: HTMLElement, store: Store, options: UIOptions = {}) {
     this.container = container;
@@ -235,6 +238,7 @@ export class UI {
 
       const btn = document.createElement('button');
       btn.className = 'me-btn me-btn-tool';
+      btn.dataset.toolId = tool.id;
       btn.innerHTML = createIcon(tool.icon).outerHTML;
 
       const tooltip = document.createElement('span');
@@ -246,6 +250,14 @@ export class UI {
       this.toolButtons.set(tool.id, btn);
       toolbar.appendChild(btn);
     });
+
+    // Kebab (more) button — hidden by default, shown when tools overflow
+    this.kebabBtn = document.createElement('button');
+    this.kebabBtn.className = 'me-btn me-btn-tool me-kebab-btn';
+    this.kebabBtn.title = 'More tools';
+    this.kebabBtn.appendChild(createIcon('moreVertical'));
+    this.kebabBtn.onclick = () => this.toggleKebabMenu();
+    toolbar.appendChild(this.kebabBtn);
 
     // Divider
     const divider = document.createElement('div');
@@ -263,7 +275,161 @@ export class UI {
     // Update active tool
     this.updateActiveTool();
 
+    // Watch for toolbar resize to manage overflow
+    this.setupToolbarOverflow(toolbar);
+
     return toolbar;
+  }
+
+  private setupToolbarOverflow(toolbar: HTMLElement): void {
+    this.toolbarResizeObserver = new ResizeObserver(() => {
+      this.updateToolbarOverflow(toolbar);
+    });
+    this.toolbarResizeObserver.observe(toolbar);
+    // Also observe the root for container size changes
+    requestAnimationFrame(() => {
+      if (this.root) {
+        this.toolbarResizeObserver?.observe(this.root);
+      }
+    });
+  }
+
+  private updateToolbarOverflow(toolbar: HTMLElement): void {
+    const isHorizontal = getComputedStyle(toolbar).flexDirection === 'row';
+
+    if (!isHorizontal) {
+      // Vertical toolbar: show all tools, hide kebab
+      this.toolButtons.forEach((btn) => {
+        btn.style.display = '';
+      });
+      if (this.kebabBtn) this.kebabBtn.style.display = 'none';
+      return;
+    }
+
+    // Horizontal toolbar: calculate how many tool buttons fit
+    const toolbarWidth = toolbar.clientWidth;
+    // Reserve space for: kebab(34) + divider(1+8+8) + color(~40) + stroke(~40) + padding(12) + gaps
+    const reservedWidth = 150;
+    const availableWidth = toolbarWidth - reservedWidth;
+    const buttonSize = 36; // approximate width of each tool button + gap
+    const maxVisible = Math.max(2, Math.floor(availableWidth / buttonSize));
+
+    const toolBtns = Array.from(this.toolButtons.entries());
+    let hiddenCount = 0;
+
+    toolBtns.forEach(([_id, btn], index) => {
+      if (index < maxVisible) {
+        btn.style.display = '';
+      } else {
+        btn.style.display = 'none';
+        hiddenCount++;
+      }
+    });
+
+    if (this.kebabBtn) {
+      this.kebabBtn.style.display = hiddenCount > 0 ? 'flex' : 'none';
+    }
+  }
+
+  private toggleKebabMenu(): void {
+    if (this.kebabDropdown) {
+      this.kebabDropdown.remove();
+      this.kebabDropdown = null;
+      return;
+    }
+
+    this.closeDropdowns();
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'me-kebab-dropdown';
+
+    const currentTool = this.store.getState().currentTool;
+
+    // Add all hidden tools to the dropdown
+    this.toolButtons.forEach((btn, id) => {
+      if (btn.style.display !== 'none') return; // skip visible tools
+
+      const tool = TOOLS.find((t) => t.id === id);
+      if (!tool) return;
+
+      const item = document.createElement('button');
+      item.className = 'me-kebab-item';
+      if (id === currentTool) item.classList.add('active');
+
+      const iconEl = createIcon(tool.icon);
+      iconEl.classList.add('me-kebab-item-icon');
+
+      const label = document.createElement('span');
+      label.className = 'me-kebab-item-label';
+      label.textContent = tool.name;
+
+      const shortcut = document.createElement('span');
+      shortcut.className = 'me-kebab-item-shortcut';
+      shortcut.textContent = tool.shortcut;
+
+      item.appendChild(iconEl);
+      item.appendChild(label);
+      item.appendChild(shortcut);
+
+      item.onclick = () => {
+        this.store.setTool(tool.id);
+        dropdown.remove();
+        this.kebabDropdown = null;
+      };
+
+      dropdown.appendChild(item);
+    });
+
+    // Also add any custom tools that are hidden
+    this.customTools.forEach((tool) => {
+      const btn = this.toolButtons.get(tool.id);
+      if (!btn || btn.style.display !== 'none') return;
+
+      const item = document.createElement('button');
+      item.className = 'me-kebab-item';
+      if (tool.id === currentTool) item.classList.add('active');
+
+      const iconWrapper = document.createElement('span');
+      iconWrapper.className = 'me-kebab-item-icon';
+      if (typeof tool.icon === 'string') {
+        iconWrapper.innerHTML = tool.icon;
+      } else {
+        iconWrapper.appendChild(tool.icon.cloneNode(true));
+      }
+
+      const label = document.createElement('span');
+      label.className = 'me-kebab-item-label';
+      label.textContent = tool.name || tool.id;
+
+      item.appendChild(iconWrapper);
+      item.appendChild(label);
+
+      item.onclick = () => {
+        this.store.setTool(tool.id);
+        dropdown.remove();
+        this.kebabDropdown = null;
+      };
+
+      dropdown.appendChild(item);
+    });
+
+    if (this.kebabBtn) {
+      this.kebabBtn.parentElement?.appendChild(dropdown);
+      this.positionDropdownFixed(this.kebabBtn, dropdown);
+    }
+
+    this.kebabDropdown = dropdown;
+
+    // Close on outside click
+    const closeHandler = (e: MouseEvent) => {
+      if (this.kebabBtn?.contains(e.target as Node)) return;
+      if (!dropdown.contains(e.target as Node)) {
+        dropdown.remove();
+        this.kebabDropdown = null;
+        document.removeEventListener('mousedown', closeHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
   }
 
   private createColorPicker(): HTMLElement {
@@ -318,6 +484,7 @@ export class UI {
       dropdown.appendChild(input);
       wrapper.appendChild(dropdown);
       this.colorDropdown = dropdown;
+      this.positionDropdownFixed(swatch, dropdown);
     };
 
     wrapper.appendChild(swatch);
@@ -374,6 +541,7 @@ export class UI {
 
       wrapper.appendChild(dropdown);
       this.strokeDropdown = dropdown;
+      this.positionDropdownFixed(btn, dropdown);
     };
 
     wrapper.appendChild(btn);
@@ -706,6 +874,39 @@ export class UI {
     return btn;
   }
 
+  private isToolbarHorizontal(): boolean {
+    if (!this.toolbar) return false;
+    return getComputedStyle(this.toolbar).flexDirection === 'row';
+  }
+
+  private positionDropdownFixed(trigger: HTMLElement, dropdown: HTMLElement): void {
+    if (!this.isToolbarHorizontal()) return;
+    const rect = trigger.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.left = `${rect.left}px`;
+    dropdown.style.top = `${rect.bottom + 8}px`;
+    dropdown.style.bottom = 'auto';
+    dropdown.style.right = 'auto';
+    dropdown.style.marginLeft = '0';
+    dropdown.style.marginTop = '0';
+
+    // After rendering, clamp to viewport edges
+    requestAnimationFrame(() => {
+      const dropRect = dropdown.getBoundingClientRect();
+      if (dropRect.right > window.innerWidth) {
+        dropdown.style.left = `${window.innerWidth - dropRect.width - 8}px`;
+      }
+      if (dropRect.left < 0) {
+        dropdown.style.left = '8px';
+      }
+      if (dropRect.bottom > window.innerHeight) {
+        // If no room below, flip above
+        dropdown.style.top = 'auto';
+        dropdown.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+      }
+    });
+  }
+
   private closeDropdowns(): void {
     if (this.colorDropdown) {
       this.colorDropdown.remove();
@@ -718,6 +919,10 @@ export class UI {
     if (this.overlayDropdown) {
       this.overlayDropdown.remove();
       this.overlayDropdown = null;
+    }
+    if (this.kebabDropdown) {
+      this.kebabDropdown.remove();
+      this.kebabDropdown = null;
     }
   }
 
@@ -748,6 +953,12 @@ export class UI {
     this.toolButtons.forEach((btn, id) => {
       btn.classList.toggle('active', id === state.currentTool);
     });
+    // Highlight kebab button if the active tool is hidden (inside kebab)
+    if (this.kebabBtn) {
+      const activeBtn = this.toolButtons.get(state.currentTool);
+      const activeIsHidden = activeBtn?.style.display === 'none';
+      this.kebabBtn.classList.toggle('active', activeIsHidden);
+    }
   }
 
   private updateNavigation(): void {
@@ -947,6 +1158,7 @@ export class UI {
   }
 
   destroy(): void {
+    this.toolbarResizeObserver?.disconnect();
     this.root.remove();
   }
 }
