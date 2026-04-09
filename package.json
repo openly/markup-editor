@@ -7,9 +7,9 @@
   "types": "dist/index.d.ts",
   "exports": {
     ".": {
+      "types": "./dist/index.d.ts",
       "import": "./dist/markup-editor.es.js",
-      "require": "./dist/markup-editor.umd.js",
-      "types": "./dist/index.d.ts"
+      "require": "./dist/markup-editor.umd.js"
     },
     "./style.css": "./dist/style.css"
   },

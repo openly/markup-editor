@@ -61,6 +61,10 @@ export class UI {
   private kebabBtn: HTMLButtonElement | null = null;
   private kebabDropdown: HTMLElement | null = null;
   private toolbarResizeObserver: ResizeObserver | null = null;
+  private topbarKebabBtn: HTMLButtonElement | null = null;
+  private topbarKebabDropdown: HTMLElement | null = null;
+  private topbarResizeObserver: ResizeObserver | null = null;
+  private topbarCenterItems: { el: HTMLElement; label: string; priority: 'primary' | 'secondary' | 'tertiary'; action: () => void; iconName?: keyof typeof icons }[] = [];
 
   constructor(container: HTMLElement, store: Store, options: UIOptions = {}) {
     this.container = container;
@@ -75,6 +79,7 @@ export class UI {
 
     this.createLayout();
     this.setupStoreListeners();
+    this.setupTopbarOverflow();
   }
 
   private createLayout(): void {
@@ -154,52 +159,74 @@ export class UI {
     const centerSection = document.createElement('div');
     centerSection.className = 'me-topbar-center';
 
+    // Register all center items with priorities
+    this.topbarCenterItems = [
+      { el: null!, label: 'Rotate left', priority: 'secondary', action: () => this.store.rotateImage(-90), iconName: 'rotateCcw' },
+      { el: null!, label: 'Rotate right', priority: 'secondary', action: () => this.store.rotateImage(90), iconName: 'rotateCw' },
+      { el: null!, label: '', priority: 'secondary', action: () => {}, iconName: undefined }, // divider1
+      { el: null!, label: 'Zoom out', priority: 'primary', action: () => { const s = this.store.getState(); this.store.setScale(s.scale / 1.2); }, iconName: 'zoomOut' },
+      { el: null!, label: '', priority: 'primary', action: () => {}, iconName: undefined }, // zoomText
+      { el: null!, label: 'Zoom in', priority: 'primary', action: () => { const s = this.store.getState(); this.store.setScale(s.scale * 1.2); }, iconName: 'zoomIn' },
+      { el: null!, label: 'Fit to screen', priority: 'tertiary', action: () => this.store.emit('fitToScreen'), iconName: 'maximize' },
+      { el: null!, label: 'Reset 100%', priority: 'tertiary', action: () => this.store.resetView(), iconName: undefined },
+      { el: null!, label: '', priority: 'secondary', action: () => {}, iconName: undefined }, // divider2
+      { el: null!, label: 'Toggle grid', priority: 'secondary', action: () => this.options.onGridToggle?.(), iconName: 'grid' },
+    ];
+
     const rotateCcwBtn = this.createButton('rotateCcw', 'Rotate left');
+    rotateCcwBtn.classList.add('me-topbar-item');
     rotateCcwBtn.onclick = () => this.store.rotateImage(-90);
+    this.topbarCenterItems[0].el = rotateCcwBtn;
 
     const rotateCwBtn = this.createButton('rotateCw', 'Rotate right');
+    rotateCwBtn.classList.add('me-topbar-item');
     rotateCwBtn.onclick = () => this.store.rotateImage(90);
+    this.topbarCenterItems[1].el = rotateCwBtn;
 
     const divider1 = document.createElement('div');
+    divider1.className = 'me-topbar-divider me-topbar-item';
     divider1.style.cssText = 'width:1px;height:24px;background:var(--me-border);margin:0 8px';
+    this.topbarCenterItems[2].el = divider1;
 
     const zoomOutBtn = this.createButton('zoomOut', 'Zoom out');
-    zoomOutBtn.onclick = () => {
-      const state = this.store.getState();
-      this.store.setScale(state.scale / 1.2);
-    };
+    zoomOutBtn.classList.add('me-topbar-item');
+    zoomOutBtn.onclick = () => { const s = this.store.getState(); this.store.setScale(s.scale / 1.2); };
+    this.topbarCenterItems[3].el = zoomOutBtn;
 
     const zoomText = document.createElement('span');
-    zoomText.className = 'me-zoom-text';
+    zoomText.className = 'me-zoom-text me-topbar-item';
     zoomText.id = 'me-zoom-text';
     zoomText.textContent = '100%';
+    this.topbarCenterItems[4].el = zoomText;
 
     const zoomInBtn = this.createButton('zoomIn', 'Zoom in');
-    zoomInBtn.onclick = () => {
-      const state = this.store.getState();
-      this.store.setScale(state.scale * 1.2);
-    };
+    zoomInBtn.classList.add('me-topbar-item');
+    zoomInBtn.onclick = () => { const s = this.store.getState(); this.store.setScale(s.scale * 1.2); };
+    this.topbarCenterItems[5].el = zoomInBtn;
 
     const fitBtn = this.createButton('maximize', 'Fit to screen');
+    fitBtn.classList.add('me-topbar-item');
     fitBtn.onclick = () => this.store.emit('fitToScreen');
+    this.topbarCenterItems[6].el = fitBtn;
 
     const resetBtn = document.createElement('button');
-    resetBtn.className = 'me-btn';
+    resetBtn.className = 'me-btn me-topbar-item';
     resetBtn.textContent = '100%';
     resetBtn.style.fontSize = '12px';
     resetBtn.style.padding = '4px 8px';
     resetBtn.onclick = () => this.store.resetView();
+    this.topbarCenterItems[7].el = resetBtn;
 
     const divider2 = document.createElement('div');
+    divider2.className = 'me-topbar-divider me-topbar-item';
     divider2.style.cssText = 'width:1px;height:24px;background:var(--me-border);margin:0 8px';
+    this.topbarCenterItems[8].el = divider2;
 
     const gridBtn = this.createButton('grid', 'Toggle grid (G)');
     gridBtn.id = 'me-grid-btn';
+    gridBtn.classList.add('me-topbar-item');
     gridBtn.onclick = () => this.options.onGridToggle?.();
-
-    const compareBtn = this.createButton('compare', 'Compare mode');
-    compareBtn.id = 'me-compare-btn';
-    compareBtn.onclick = () => this.options.onCompareToggle?.();
+    this.topbarCenterItems[9].el = gridBtn;
 
     centerSection.appendChild(rotateCcwBtn);
     centerSection.appendChild(rotateCwBtn);
@@ -211,7 +238,14 @@ export class UI {
     centerSection.appendChild(resetBtn);
     centerSection.appendChild(divider2);
     centerSection.appendChild(gridBtn);
-    // centerSection.appendChild(compareBtn);
+
+    // Topbar kebab (more) button — hidden by default
+    this.topbarKebabBtn = document.createElement('button');
+    this.topbarKebabBtn.className = 'me-btn me-btn-icon me-topbar-kebab-btn';
+    this.topbarKebabBtn.title = 'More options';
+    this.topbarKebabBtn.appendChild(createIcon('moreVertical'));
+    this.topbarKebabBtn.onclick = () => this.toggleTopbarKebabMenu();
+    centerSection.appendChild(this.topbarKebabBtn);
 
     // Right section: Overlay
     const rightSection = document.createElement('div');
@@ -907,6 +941,139 @@ export class UI {
     });
   }
 
+  private setupTopbarOverflow(): void {
+    if (!this.topBar) return;
+
+    this.topbarResizeObserver = new ResizeObserver(() => {
+      this.updateTopbarOverflow();
+    });
+    this.topbarResizeObserver.observe(this.topBar);
+    requestAnimationFrame(() => {
+      if (this.root) {
+        this.topbarResizeObserver?.observe(this.root);
+      }
+    });
+  }
+
+  private updateTopbarOverflow(): void {
+    const topbarWidth = this.topBar.clientWidth;
+    // Left section ~120px, right section ~40px, padding ~24px, kebab btn ~32px
+    const reservedWidth = 220;
+    const availableWidth = topbarWidth - reservedWidth;
+    const itemSize = 34; // approximate width per center item
+
+    const maxVisible = Math.max(2, Math.floor(availableWidth / itemSize));
+
+    let visibleCount = 0;
+    let hiddenCount = 0;
+
+    this.topbarCenterItems.forEach((item) => {
+      // Dividers (no label): show only if adjacent items are visible
+      if (!item.label) {
+        // Will be handled after
+        return;
+      }
+      if (visibleCount < maxVisible) {
+        item.el.style.display = '';
+        visibleCount++;
+      } else {
+        item.el.style.display = 'none';
+        hiddenCount++;
+      }
+    });
+
+    // Show/hide dividers based on neighbors
+    this.topbarCenterItems.forEach((item, index) => {
+      if (item.label) return; // skip non-dividers
+      const prev = this.topbarCenterItems[index - 1];
+      const next = this.topbarCenterItems[index + 1];
+      const prevVisible = prev && prev.el.style.display !== 'none';
+      const nextVisible = next && next.el.style.display !== 'none';
+      item.el.style.display = (prevVisible && nextVisible) ? '' : 'none';
+    });
+
+    if (this.topbarKebabBtn) {
+      this.topbarKebabBtn.style.display = hiddenCount > 0 ? 'flex' : 'none';
+    }
+  }
+
+  private toggleTopbarKebabMenu(): void {
+    if (this.topbarKebabDropdown) {
+      this.topbarKebabDropdown.remove();
+      this.topbarKebabDropdown = null;
+      return;
+    }
+
+    this.closeDropdowns();
+
+    const dropdown = document.createElement('div');
+    dropdown.className = 'me-kebab-dropdown';
+
+    // Add hidden topbar items to dropdown
+    this.topbarCenterItems.forEach((item) => {
+      if (!item.label) return; // skip dividers
+      if (item.el.style.display !== 'none') return; // skip visible
+
+      const menuItem = document.createElement('button');
+      menuItem.className = 'me-kebab-item';
+
+      if (item.iconName) {
+        const iconEl = createIcon(item.iconName);
+        iconEl.classList.add('me-kebab-item-icon');
+        menuItem.appendChild(iconEl);
+      } else {
+        const placeholder = document.createElement('span');
+        placeholder.className = 'me-kebab-item-icon';
+        placeholder.textContent = '';
+        menuItem.appendChild(placeholder);
+      }
+
+      const label = document.createElement('span');
+      label.className = 'me-kebab-item-label';
+      label.textContent = item.label;
+      menuItem.appendChild(label);
+
+      menuItem.onclick = () => {
+        item.action();
+        dropdown.remove();
+        this.topbarKebabDropdown = null;
+      };
+
+      dropdown.appendChild(menuItem);
+    });
+
+    if (this.topbarKebabBtn) {
+      this.topBar.appendChild(dropdown);
+      // Position below the kebab button
+      const rect = this.topbarKebabBtn.getBoundingClientRect();
+      dropdown.style.position = 'fixed';
+      dropdown.style.top = `${rect.bottom + 4}px`;
+      dropdown.style.left = `${rect.left}px`;
+      dropdown.style.right = 'auto';
+      dropdown.style.bottom = 'auto';
+
+      requestAnimationFrame(() => {
+        const dropRect = dropdown.getBoundingClientRect();
+        if (dropRect.right > window.innerWidth) {
+          dropdown.style.left = `${window.innerWidth - dropRect.width - 8}px`;
+        }
+      });
+    }
+
+    this.topbarKebabDropdown = dropdown;
+
+    // Close on outside click
+    const closeHandler = (e: MouseEvent) => {
+      if (this.topbarKebabBtn?.contains(e.target as Node)) return;
+      if (!dropdown.contains(e.target as Node)) {
+        dropdown.remove();
+        this.topbarKebabDropdown = null;
+        document.removeEventListener('mousedown', closeHandler);
+      }
+    };
+    setTimeout(() => document.addEventListener('mousedown', closeHandler), 0);
+  }
+
   private closeDropdowns(): void {
     if (this.colorDropdown) {
       this.colorDropdown.remove();
@@ -923,6 +1090,10 @@ export class UI {
     if (this.kebabDropdown) {
       this.kebabDropdown.remove();
       this.kebabDropdown = null;
+    }
+    if (this.topbarKebabDropdown) {
+      this.topbarKebabDropdown.remove();
+      this.topbarKebabDropdown = null;
     }
   }
 
@@ -1159,6 +1330,7 @@ export class UI {
 
   destroy(): void {
     this.toolbarResizeObserver?.disconnect();
+    this.topbarResizeObserver?.disconnect();
     this.root.remove();
   }
 }
