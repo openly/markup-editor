@@ -44,6 +44,12 @@ export const styles = `
   flex-shrink: 0;
   padding: 6px 12px;
   overflow: hidden;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.me-preview-panel .me-preview-scroll {
+  width: 100%;
 }
 
 .me-preview-scroll {
@@ -93,7 +99,7 @@ export const styles = `
   display: inline-block;
   width: 50px;
   height: 50px;
-  object-fit
+  object-fit: cover;
   border-radius: 4px;
 }
 
@@ -924,6 +930,16 @@ export const styles = `
   stroke: none;
 }
 
+/* Topbar kebab menu */
+.me-topbar-kebab-btn {
+  display: none;
+}
+
+.me-topbar-kebab-btn .me-icon circle {
+  fill: currentColor;
+  stroke: none;
+}
+
 .me-kebab-dropdown {
   position: fixed;
   background: var(--me-surface);
@@ -1047,6 +1063,26 @@ export const styles = `
   .me-notes-panel {
     padding: 8px;
   }
+
+  /* Scale down preview thumbs */
+  .me-preview-thumb {
+    width: 42px;
+    height: 42px;
+  }
+
+  .me-preview-item {
+    padding: 3px;
+    gap: 2px;
+  }
+
+  .me-preview-label {
+    font-size: 9px;
+    max-width: 46px;
+  }
+
+  .me-preview-panel {
+    padding: 4px 8px;
+  }
 }
 
 /* ----- Small: container < 540px ----- */
@@ -1062,11 +1098,13 @@ export const styles = `
   }
 
   .me-topbar-center {
-    order: 3;
-    width: 100%;
+    order: 0;
+    width: auto;
     justify-content: center;
     gap: 2px;
-    padding-top: 2px;
+    padding-top: 0;
+    flex: 1;
+    min-width: 0;
   }
 
   .me-image-name {
@@ -1092,6 +1130,30 @@ export const styles = `
   .me-icon {
     width: 16px;
     height: 16px;
+  }
+
+  /* Preview thumbs small */
+  .me-preview-thumb {
+    width: 32px;
+    height: 32px;
+  }
+
+  .me-preview-item {
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .me-preview-label {
+    font-size: 8px;
+    max-width: 36px;
+  }
+
+  .me-preview-panel {
+    padding: 3px 6px;
+  }
+
+  .me-preview-scroll {
+    gap: 4px;
   }
 
   /* Switch toolbar to horizontal top */
@@ -1247,6 +1309,11 @@ export const styles = `
     padding: 2px 4px;
   }
 
+  /* Hide overlay section on extra small */
+  .me-overlay-section {
+    display: none;
+  }
+
   .me-btn-icon {
     width: 26px;
     height: 26px;
@@ -1273,16 +1340,34 @@ export const styles = `
   }
 
   .me-zoom-text {
-    font-size: 10px;
-    min-width: 30px;
+    display: none;
   }
 
   .me-notes-panel {
     display: none;
   }
 
+  /* Preview: show tiny thumbs, no labels */
+  .me-preview-thumb {
+    width: 26px;
+    height: 26px;
+  }
+
+  .me-preview-label {
+    display: none;
+  }
+
+  .me-preview-item {
+    padding: 2px;
+    gap: 0;
+  }
+
   .me-preview-panel {
-    display: none !important;
+    padding: 2px 4px;
+  }
+
+  .me-preview-scroll {
+    gap: 3px;
   }
 
   .me-toolbar {
