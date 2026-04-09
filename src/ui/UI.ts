@@ -159,85 +159,78 @@ export class UI {
     const centerSection = document.createElement('div');
     centerSection.className = 'me-topbar-center';
 
-    // Register all center items with priorities
-    this.topbarCenterItems = [
-      { el: null!, label: 'Rotate left', priority: 'secondary', action: () => this.store.rotateImage(-90), iconName: 'rotateCcw' },
-      { el: null!, label: 'Rotate right', priority: 'secondary', action: () => this.store.rotateImage(90), iconName: 'rotateCw' },
-      { el: null!, label: '', priority: 'secondary', action: () => {}, iconName: undefined }, // divider1
-      { el: null!, label: 'Zoom out', priority: 'primary', action: () => { const s = this.store.getState(); this.store.setScale(s.scale / 1.2); }, iconName: 'zoomOut' },
-      { el: null!, label: '', priority: 'primary', action: () => {}, iconName: undefined }, // zoomText
-      { el: null!, label: 'Zoom in', priority: 'primary', action: () => { const s = this.store.getState(); this.store.setScale(s.scale * 1.2); }, iconName: 'zoomIn' },
-      { el: null!, label: 'Fit to screen', priority: 'tertiary', action: () => this.store.emit('fitToScreen'), iconName: 'maximize' },
-      { el: null!, label: 'Reset 100%', priority: 'tertiary', action: () => this.store.resetView(), iconName: undefined },
-      { el: null!, label: '', priority: 'secondary', action: () => {}, iconName: undefined }, // divider2
-      { el: null!, label: 'Toggle grid', priority: 'secondary', action: () => this.options.onGridToggle?.(), iconName: 'grid' },
-    ];
+    // Build center items array — items are tracked for overflow into kebab
+    this.topbarCenterItems = [];
 
+    // Rotate left
     const rotateCcwBtn = this.createButton('rotateCcw', 'Rotate left');
     rotateCcwBtn.classList.add('me-topbar-item');
     rotateCcwBtn.onclick = () => this.store.rotateImage(-90);
-    this.topbarCenterItems[0].el = rotateCcwBtn;
+    this.topbarCenterItems.push({ el: rotateCcwBtn, label: 'Rotate left', priority: 'secondary', action: () => this.store.rotateImage(-90), iconName: 'rotateCcw' });
 
+    // Rotate right
     const rotateCwBtn = this.createButton('rotateCw', 'Rotate right');
     rotateCwBtn.classList.add('me-topbar-item');
     rotateCwBtn.onclick = () => this.store.rotateImage(90);
-    this.topbarCenterItems[1].el = rotateCwBtn;
+    this.topbarCenterItems.push({ el: rotateCwBtn, label: 'Rotate right', priority: 'secondary', action: () => this.store.rotateImage(90), iconName: 'rotateCw' });
 
+    // Divider 1
     const divider1 = document.createElement('div');
     divider1.className = 'me-topbar-divider me-topbar-item';
     divider1.style.cssText = 'width:1px;height:24px;background:var(--me-border);margin:0 8px';
-    this.topbarCenterItems[2].el = divider1;
+    this.topbarCenterItems.push({ el: divider1, label: '', priority: 'secondary', action: () => {}, iconName: undefined });
 
+    // Zoom out
     const zoomOutBtn = this.createButton('zoomOut', 'Zoom out');
     zoomOutBtn.classList.add('me-topbar-item');
     zoomOutBtn.onclick = () => { const s = this.store.getState(); this.store.setScale(s.scale / 1.2); };
-    this.topbarCenterItems[3].el = zoomOutBtn;
+    this.topbarCenterItems.push({ el: zoomOutBtn, label: 'Zoom out', priority: 'primary', action: () => { const s = this.store.getState(); this.store.setScale(s.scale / 1.2); }, iconName: 'zoomOut' });
 
+    // Zoom text
     const zoomText = document.createElement('span');
     zoomText.className = 'me-zoom-text me-topbar-item';
     zoomText.id = 'me-zoom-text';
     zoomText.textContent = '100%';
-    this.topbarCenterItems[4].el = zoomText;
+    this.topbarCenterItems.push({ el: zoomText, label: '', priority: 'primary', action: () => {}, iconName: undefined });
 
+    // Zoom in
     const zoomInBtn = this.createButton('zoomIn', 'Zoom in');
     zoomInBtn.classList.add('me-topbar-item');
     zoomInBtn.onclick = () => { const s = this.store.getState(); this.store.setScale(s.scale * 1.2); };
-    this.topbarCenterItems[5].el = zoomInBtn;
+    this.topbarCenterItems.push({ el: zoomInBtn, label: 'Zoom in', priority: 'primary', action: () => { const s = this.store.getState(); this.store.setScale(s.scale * 1.2); }, iconName: 'zoomIn' });
 
+    // Fit to screen
     const fitBtn = this.createButton('maximize', 'Fit to screen');
     fitBtn.classList.add('me-topbar-item');
     fitBtn.onclick = () => this.store.emit('fitToScreen');
-    this.topbarCenterItems[6].el = fitBtn;
+    this.topbarCenterItems.push({ el: fitBtn, label: 'Fit to screen', priority: 'tertiary', action: () => this.store.emit('fitToScreen'), iconName: 'maximize' });
 
+    // Reset 100%
     const resetBtn = document.createElement('button');
     resetBtn.className = 'me-btn me-topbar-item';
     resetBtn.textContent = '100%';
     resetBtn.style.fontSize = '12px';
     resetBtn.style.padding = '4px 8px';
     resetBtn.onclick = () => this.store.resetView();
-    this.topbarCenterItems[7].el = resetBtn;
+    this.topbarCenterItems.push({ el: resetBtn, label: 'Reset 100%', priority: 'tertiary', action: () => this.store.resetView(), iconName: undefined });
 
+    // Divider 2
     const divider2 = document.createElement('div');
     divider2.className = 'me-topbar-divider me-topbar-item';
     divider2.style.cssText = 'width:1px;height:24px;background:var(--me-border);margin:0 8px';
-    this.topbarCenterItems[8].el = divider2;
+    this.topbarCenterItems.push({ el: divider2, label: '', priority: 'secondary', action: () => {}, iconName: undefined });
 
+    // Grid toggle
     const gridBtn = this.createButton('grid', 'Toggle grid (G)');
     gridBtn.id = 'me-grid-btn';
     gridBtn.classList.add('me-topbar-item');
     gridBtn.onclick = () => this.options.onGridToggle?.();
-    this.topbarCenterItems[9].el = gridBtn;
+    this.topbarCenterItems.push({ el: gridBtn, label: 'Toggle grid', priority: 'secondary', action: () => this.options.onGridToggle?.(), iconName: 'grid' });
 
-    centerSection.appendChild(rotateCcwBtn);
-    centerSection.appendChild(rotateCwBtn);
-    centerSection.appendChild(divider1);
-    centerSection.appendChild(zoomOutBtn);
-    centerSection.appendChild(zoomText);
-    centerSection.appendChild(zoomInBtn);
-    centerSection.appendChild(fitBtn);
-    centerSection.appendChild(resetBtn);
-    centerSection.appendChild(divider2);
-    centerSection.appendChild(gridBtn);
+    // Append all center items to DOM
+    this.topbarCenterItems.forEach((item) => {
+      centerSection.appendChild(item.el);
+    });
 
     // Topbar kebab (more) button — hidden by default
     this.topbarKebabBtn = document.createElement('button');
@@ -306,6 +299,56 @@ export class UI {
     const strokePicker = this.createStrokePicker();
     toolbar.appendChild(strokePicker);
 
+    // Divider before history actions
+    const divider2 = document.createElement('div');
+    divider2.className = 'me-toolbar-divider';
+    toolbar.appendChild(divider2);
+
+    // Undo button
+    const toolbarUndoBtn = document.createElement('button');
+    toolbarUndoBtn.className = 'me-btn me-btn-tool';
+    toolbarUndoBtn.dataset.toolId = '__undo';
+    toolbarUndoBtn.title = 'Undo';
+    toolbarUndoBtn.innerHTML = createIcon('undo').outerHTML;
+    const undoTooltip = document.createElement('span');
+    undoTooltip.className = 'me-tooltip';
+    undoTooltip.textContent = 'Undo (Cmd+Z)';
+    toolbarUndoBtn.appendChild(undoTooltip);
+    toolbarUndoBtn.onclick = () => { const img = this.store.getCurrentImage(); if (img) this.store.undo(img.id); };
+    this.toolButtons.set('__undo', toolbarUndoBtn);
+    toolbar.appendChild(toolbarUndoBtn);
+
+    // Redo button
+    const toolbarRedoBtn = document.createElement('button');
+    toolbarRedoBtn.className = 'me-btn me-btn-tool';
+    toolbarRedoBtn.dataset.toolId = '__redo';
+    toolbarRedoBtn.title = 'Redo';
+    toolbarRedoBtn.innerHTML = createIcon('redo').outerHTML;
+    const redoTooltip = document.createElement('span');
+    redoTooltip.className = 'me-tooltip';
+    redoTooltip.textContent = 'Redo (Cmd+Shift+Z)';
+    toolbarRedoBtn.appendChild(redoTooltip);
+    toolbarRedoBtn.onclick = () => { const img = this.store.getCurrentImage(); if (img) this.store.redo(img.id); };
+    this.toolButtons.set('__redo', toolbarRedoBtn);
+    toolbar.appendChild(toolbarRedoBtn);
+
+    // History toggle button
+    const toolbarHistoryBtn = document.createElement('button');
+    toolbarHistoryBtn.className = 'me-btn me-btn-tool';
+    toolbarHistoryBtn.dataset.toolId = '__history';
+    toolbarHistoryBtn.title = 'History';
+    toolbarHistoryBtn.innerHTML = createIcon('panelRight').outerHTML;
+    const historyTooltip = document.createElement('span');
+    historyTooltip.className = 'me-tooltip';
+    historyTooltip.textContent = 'History';
+    toolbarHistoryBtn.appendChild(historyTooltip);
+    toolbarHistoryBtn.onclick = () => {
+      const hw = this.root.querySelector('.me-history-wrapper');
+      if (hw) hw.classList.toggle('collapsed');
+    };
+    this.toolButtons.set('__history', toolbarHistoryBtn);
+    toolbar.appendChild(toolbarHistoryBtn);
+
     // Update active tool
     this.updateActiveTool();
 
@@ -328,6 +371,9 @@ export class UI {
     });
   }
 
+  // IDs that should always remain visible in the toolbar
+  private static PINNED_TOOLS = new Set(['__undo', '__redo']);
+
   private updateToolbarOverflow(toolbar: HTMLElement): void {
     const isHorizontal = getComputedStyle(toolbar).flexDirection === 'row';
 
@@ -342,22 +388,29 @@ export class UI {
 
     // Horizontal toolbar: calculate how many tool buttons fit
     const toolbarWidth = toolbar.clientWidth;
-    // Reserve space for: kebab(34) + divider(1+8+8) + color(~40) + stroke(~40) + padding(12) + gaps
-    const reservedWidth = 150;
+    // Reserve space for: kebab(36) + 2 dividers(~20) + color(~40) + stroke(~40) + undo(36) + redo(36) + padding(12) + gaps
+    const reservedWidth = 230;
     const availableWidth = toolbarWidth - reservedWidth;
-    const buttonSize = 36; // approximate width of each tool button + gap
+    const buttonSize = 36;
     const maxVisible = Math.max(2, Math.floor(availableWidth / buttonSize));
 
-    const toolBtns = Array.from(this.toolButtons.entries());
+    // Only count non-pinned tools for overflow
+    const overflowable = Array.from(this.toolButtons.entries()).filter(([id]) => !UI.PINNED_TOOLS.has(id));
     let hiddenCount = 0;
 
-    toolBtns.forEach(([_id, btn], index) => {
+    overflowable.forEach(([_id, btn], index) => {
       if (index < maxVisible) {
         btn.style.display = '';
       } else {
         btn.style.display = 'none';
         hiddenCount++;
       }
+    });
+
+    // Pinned tools are always visible
+    UI.PINNED_TOOLS.forEach((id) => {
+      const btn = this.toolButtons.get(id);
+      if (btn) btn.style.display = '';
     });
 
     if (this.kebabBtn) {
@@ -379,37 +432,74 @@ export class UI {
 
     const currentTool = this.store.getState().currentTool;
 
+    // Action button metadata for undo/redo/history
+    const actionMeta: Record<string, { label: string; icon: keyof typeof icons; shortcut: string; action: () => void }> = {
+      '__undo': { label: 'Undo', icon: 'undo', shortcut: 'Cmd+Z', action: () => { const img = this.store.getCurrentImage(); if (img) this.store.undo(img.id); } },
+      '__redo': { label: 'Redo', icon: 'redo', shortcut: 'Cmd+Shift+Z', action: () => { const img = this.store.getCurrentImage(); if (img) this.store.redo(img.id); } },
+      '__history': { label: 'History', icon: 'panelRight', shortcut: '', action: () => { const hw = this.root.querySelector('.me-history-wrapper'); if (hw) hw.classList.toggle('collapsed'); } },
+    };
+
     // Add all hidden tools to the dropdown
     this.toolButtons.forEach((btn, id) => {
       if (btn.style.display !== 'none') return; // skip visible tools
 
       const tool = TOOLS.find((t) => t.id === id);
-      if (!tool) return;
+      const action = actionMeta[id];
+
+      if (!tool && !action) return;
 
       const item = document.createElement('button');
       item.className = 'me-kebab-item';
-      if (id === currentTool) item.classList.add('active');
 
-      const iconEl = createIcon(tool.icon);
-      iconEl.classList.add('me-kebab-item-icon');
+      if (tool) {
+        if (id === currentTool) item.classList.add('active');
 
-      const label = document.createElement('span');
-      label.className = 'me-kebab-item-label';
-      label.textContent = tool.name;
+        const iconEl = createIcon(tool.icon);
+        iconEl.classList.add('me-kebab-item-icon');
 
-      const shortcut = document.createElement('span');
-      shortcut.className = 'me-kebab-item-shortcut';
-      shortcut.textContent = tool.shortcut;
+        const label = document.createElement('span');
+        label.className = 'me-kebab-item-label';
+        label.textContent = tool.name;
 
-      item.appendChild(iconEl);
-      item.appendChild(label);
-      item.appendChild(shortcut);
+        const shortcut = document.createElement('span');
+        shortcut.className = 'me-kebab-item-shortcut';
+        shortcut.textContent = tool.shortcut;
 
-      item.onclick = () => {
-        this.store.setTool(tool.id);
-        dropdown.remove();
-        this.kebabDropdown = null;
-      };
+        item.appendChild(iconEl);
+        item.appendChild(label);
+        item.appendChild(shortcut);
+
+        item.onclick = () => {
+          this.store.setTool(tool.id);
+          dropdown.remove();
+          this.kebabDropdown = null;
+        };
+      } else if (action) {
+        const iconEl = createIcon(action.icon);
+        iconEl.classList.add('me-kebab-item-icon');
+
+        const label = document.createElement('span');
+        label.className = 'me-kebab-item-label';
+        label.textContent = action.label;
+
+        if (action.shortcut) {
+          const shortcut = document.createElement('span');
+          shortcut.className = 'me-kebab-item-shortcut';
+          shortcut.textContent = action.shortcut;
+          item.appendChild(iconEl);
+          item.appendChild(label);
+          item.appendChild(shortcut);
+        } else {
+          item.appendChild(iconEl);
+          item.appendChild(label);
+        }
+
+        item.onclick = () => {
+          action.action();
+          dropdown.remove();
+          this.kebabDropdown = null;
+        };
+      }
 
       dropdown.appendChild(item);
     });
@@ -614,8 +704,13 @@ export class UI {
       if (image) this.store.redo(image.id);
     };
 
+    const closeBtn = this.createButton('x', 'Close history');
+    closeBtn.className = 'me-btn me-btn-icon me-history-close-btn';
+    closeBtn.onclick = () => wrapper.classList.add('collapsed');
+
     actions.appendChild(undoBtn);
     actions.appendChild(redoBtn);
+    actions.appendChild(closeBtn);
     header.appendChild(title);
     header.appendChild(actions);
 
@@ -1122,6 +1217,8 @@ export class UI {
   private updateActiveTool(): void {
     const state = this.store.getState();
     this.toolButtons.forEach((btn, id) => {
+      // Don't highlight action buttons (undo/redo/history) as active tool
+      if (id.startsWith('__')) return;
       btn.classList.toggle('active', id === state.currentTool);
     });
     // Highlight kebab button if the active tool is hidden (inside kebab)
