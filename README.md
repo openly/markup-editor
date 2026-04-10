@@ -1,6 +1,6 @@
 # @markup/editor
 
-A vanilla JavaScript image markup/annotation library with extensibility and dark mode support. Works in any framework or plain HTML.
+A vanilla JavaScript image markup/annotation library with extensibility and dark mode support. Works in any framework or plain HTML..
 
 ## Installation
 
