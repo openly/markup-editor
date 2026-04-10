@@ -192,6 +192,7 @@ export interface MarkupEditorOptions {
   showToolbar?: boolean;
   showHistoryPanel?: boolean;
   showNotesPanel?: boolean;
+  withoutThumb?: boolean;
   showTopBar?: boolean;
   toolbarPosition?: 'left' | 'right' | 'top' | 'bottom';
   locale?: string;
