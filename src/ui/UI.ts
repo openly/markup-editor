@@ -26,6 +26,7 @@ interface UIOptions {
   showToolbar?: boolean;
   showHistoryPanel?: boolean;
   showNotesPanel?: boolean;
+  withoutThumb?: boolean;
   showTopBar?: boolean;
   tools?: ToolType[];
   onImageUpload?: (files: FileList) => void;
@@ -73,6 +74,7 @@ export class UI {
       showToolbar: true,
       showHistoryPanel: true,
       showNotesPanel: true,
+      withoutThumb: false,
       showTopBar: true,
       ...options,
     };
@@ -93,8 +95,10 @@ export class UI {
     }
 
     // Image preview panel
-    this.previewPanel = this.createPreviewPanel();
-    this.root.appendChild(this.previewPanel);
+    if (!this.options.withoutThumb) {
+      this.previewPanel = this.createPreviewPanel();
+      this.root.appendChild(this.previewPanel);
+    }
 
     // Main content area
     const main = document.createElement('div');
