@@ -154,9 +154,11 @@ export class UI {
     imageName.className = 'me-image-name';
     imageName.id = 'me-image-name';
 
-    leftSection.appendChild(prevBtn);
-    leftSection.appendChild(navText);
-    leftSection.appendChild(nextBtn);
+    if (!this.options.withoutThumb) {
+      leftSection.appendChild(prevBtn);
+      leftSection.appendChild(navText);
+      leftSection.appendChild(nextBtn);
+    }
     leftSection.appendChild(imageName);
 
     // Center section: Rotation and zoom
