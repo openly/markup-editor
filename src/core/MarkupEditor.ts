@@ -65,6 +65,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
       showToolbar: options.showToolbar ?? true,
       showHistoryPanel: options.showHistoryPanel ?? true,
       showNotesPanel: options.showNotesPanel ?? true,
+      withoutThumb: options.withoutThumb ?? false,
       showTopBar: options.showTopBar ?? true,
       tools: options.tools,
       onImageUpload: (files) => this.handleFileUpload(files),
