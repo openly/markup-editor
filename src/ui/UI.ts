@@ -13,11 +13,15 @@ const TOOLS: { id: ToolType; name: string; shortcut: string; icon: keyof typeof 
   { id: 'highlight', name: 'Highlight', shortcut: 'H', icon: 'highlight' },
   { id: 'crop', name: 'Crop', shortcut: 'C', icon: 'crop' },
   { id: 'blur', name: 'Blur', shortcut: 'B', icon: 'blur' },
+  { id: 'curve', name: 'Curve', shortcut: 'U', icon: 'curve' },
+  { id: 'caption', name: 'Caption', shortcut: 'F', icon: 'caption' },
+  { id: 'callout', name: 'Callout', shortcut: 'K', icon: 'callout' },
+  { id: 'measure', name: 'Measure', shortcut: 'M', icon: 'measure' },
 ];
 
 const DEFAULT_COLORS = [
-  '#ff0000', '#ff8c00', '#ffff00', '#00ff00', '#00ffff',
-  '#0000ff', '#8b00ff', '#ff1493', '#ffffff', '#000000',
+  '#EF4444', '#10B981', '#2563EB', '#FFFF00', '#7C3AED',
+  '#F472B6', '#FFFFFF', '#000000', "#00FFFF", '#FF1493'
 ];
 
 const STROKE_WIDTHS = [1, 2, 3, 5, 8, 12];
@@ -382,45 +386,60 @@ export class UI {
 
   private updateToolbarOverflow(toolbar: HTMLElement): void {
     const isHorizontal = getComputedStyle(toolbar).flexDirection === 'row';
+    const toolEntries = Array.from(this.toolButtons.entries()).filter(([id]) => !UI.PINNED_TOOLS.has(id));
 
-    if (!isHorizontal) {
-      // Vertical toolbar: show all tools, hide kebab
-      this.toolButtons.forEach((btn) => {
-        btn.style.display = '';
+    if (isHorizontal) {
+      // Horizontal: calculate how many tools fit based on available width
+      const toolbarWidth = toolbar.clientWidth;
+      // Reserve space for: kebab(36) + 2 dividers(~20) + color(~40) + stroke(~40) + undo(36) + redo(36) + history(36) + padding/gaps
+      const reservedWidth = 260;
+      const availableWidth = toolbarWidth - reservedWidth;
+      const buttonSize = 36;
+      const fitCount = Math.max(2, Math.floor(availableWidth / buttonSize));
+      // Cap at half the tools max
+      const maxVisible = Math.min(fitCount, Math.ceil(toolEntries.length / 2));
+
+      let hiddenCount = 0;
+      toolEntries.forEach(([_id, btn], index) => {
+        if (index < maxVisible) {
+          btn.style.display = '';
+        } else {
+          btn.style.display = 'none';
+          hiddenCount++;
+        }
       });
-      if (this.kebabBtn) this.kebabBtn.style.display = 'none';
-      return;
-    }
 
-    // Horizontal toolbar: calculate how many tool buttons fit
-    const toolbarWidth = toolbar.clientWidth;
-    // Reserve space for: kebab(36) + 2 dividers(~20) + color(~40) + stroke(~40) + undo(36) + redo(36) + padding(12) + gaps
-    const reservedWidth = 230;
-    const availableWidth = toolbarWidth - reservedWidth;
-    const buttonSize = 36;
-    const maxVisible = Math.max(2, Math.floor(availableWidth / buttonSize));
+      // Pinned tools are always visible
+      UI.PINNED_TOOLS.forEach((id) => {
+        const btn = this.toolButtons.get(id);
+        if (btn) btn.style.display = '';
+      });
 
-    // Only count non-pinned tools for overflow
-    const overflowable = Array.from(this.toolButtons.entries()).filter(([id]) => !UI.PINNED_TOOLS.has(id));
-    let hiddenCount = 0;
-
-    overflowable.forEach(([_id, btn], index) => {
-      if (index < maxVisible) {
-        btn.style.display = '';
-      } else {
-        btn.style.display = 'none';
-        hiddenCount++;
+      if (this.kebabBtn) {
+        this.kebabBtn.style.display = hiddenCount > 0 ? 'flex' : 'none';
       }
-    });
+    } else {
+      // Vertical: show half, rest in kebab
+      const maxVisible = Math.ceil(toolEntries.length / 2);
+      let hiddenCount = 0;
 
-    // Pinned tools are always visible
-    UI.PINNED_TOOLS.forEach((id) => {
-      const btn = this.toolButtons.get(id);
-      if (btn) btn.style.display = '';
-    });
+      toolEntries.forEach(([_id, btn], index) => {
+        if (index < maxVisible) {
+          btn.style.display = '';
+        } else {
+          btn.style.display = 'none';
+          hiddenCount++;
+        }
+      });
 
-    if (this.kebabBtn) {
-      this.kebabBtn.style.display = hiddenCount > 0 ? 'flex' : 'none';
+      UI.PINNED_TOOLS.forEach((id) => {
+        const btn = this.toolButtons.get(id);
+        if (btn) btn.style.display = '';
+      });
+
+      if (this.kebabBtn) {
+        this.kebabBtn.style.display = hiddenCount > 0 ? 'flex' : 'none';
+      }
     }
   }
 
@@ -545,7 +564,7 @@ export class UI {
 
     if (this.kebabBtn) {
       this.kebabBtn.parentElement?.appendChild(dropdown);
-      this.positionDropdownFixed(this.kebabBtn, dropdown);
+      this.positionKebabDropdown(this.kebabBtn, dropdown);
     }
 
     this.kebabDropdown = dropdown;
@@ -1012,6 +1031,60 @@ export class UI {
   private isToolbarHorizontal(): boolean {
     if (!this.toolbar) return false;
     return getComputedStyle(this.toolbar).flexDirection === 'row';
+  }
+
+  private positionKebabDropdown(trigger: HTMLElement, dropdown: HTMLElement): void {
+    const rect = trigger.getBoundingClientRect();
+    dropdown.style.position = 'fixed';
+    dropdown.style.marginLeft = '0';
+    dropdown.style.marginTop = '0';
+
+    if (this.isToolbarHorizontal()) {
+      // Horizontal toolbar: open below the 3-dot button
+      dropdown.style.left = `${rect.left}px`;
+      dropdown.style.top = `${rect.bottom + 8}px`;
+      dropdown.style.bottom = 'auto';
+      dropdown.style.right = 'auto';
+
+      requestAnimationFrame(() => {
+        const dropRect = dropdown.getBoundingClientRect();
+        if (dropRect.right > window.innerWidth) {
+          dropdown.style.left = `${window.innerWidth - dropRect.width - 8}px`;
+        }
+        if (dropRect.left < 0) {
+          dropdown.style.left = '8px';
+        }
+        if (dropRect.bottom > window.innerHeight) {
+          // No room below, flip above
+          dropdown.style.top = 'auto';
+          dropdown.style.bottom = `${window.innerHeight - rect.top + 8}px`;
+        }
+      });
+    } else {
+      // Vertical toolbar: open to the right, vertically centered on the 3-dot button
+      dropdown.style.left = `${rect.right + 8}px`;
+      dropdown.style.top = '0px';
+      dropdown.style.bottom = 'auto';
+      dropdown.style.right = 'auto';
+
+      requestAnimationFrame(() => {
+        const dropRect = dropdown.getBoundingClientRect();
+        const triggerCenterY = rect.top + rect.height / 2;
+        const centeredTop = triggerCenterY - dropRect.height / 2;
+        dropdown.style.top = `${centeredTop}px`;
+
+        const newDropRect = dropdown.getBoundingClientRect();
+        if (newDropRect.right > window.innerWidth) {
+          dropdown.style.left = `${rect.left - dropRect.width - 8}px`;
+        }
+        if (newDropRect.bottom > window.innerHeight) {
+          dropdown.style.top = `${window.innerHeight - dropRect.height - 8}px`;
+        }
+        if (newDropRect.top < 0) {
+          dropdown.style.top = '8px';
+        }
+      });
+    }
   }
 
   private positionDropdownFixed(trigger: HTMLElement, dropdown: HTMLElement): void {

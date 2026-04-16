@@ -291,7 +291,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
   }
 
   private showTextEditModal(annotation: Annotation): void {
-    if (annotation.type !== 'text') return;
+    if (annotation.type !== 'text' && annotation.type !== 'callout' && annotation.type !== 'caption') return;
 
     const overlay = document.createElement('div');
     overlay.className = 'me-modal-overlay';
