@@ -330,14 +330,14 @@ export class Store extends EventEmitter {
       );
       this.applyImageState(imageId, previousEntry.imageSnapshot);
       this.state.selectedId = null;
-      this.emitImageRefresh(imageId);
+      this.emit('annotationsRefresh', imageId);
       this.emit('historyChange', this.getHistory(imageId));
     } else if (currentIndex === 0) {
       this.state.historyIndexByImage[imageId] = -1;
       this.state.annotationsByImage[imageId] = [];
       this.applyImageState(imageId, this.initialImageStateByImage[imageId]);
       this.state.selectedId = null;
-      this.emitImageRefresh(imageId);
+      this.emit('annotationsRefresh', imageId);
       this.emit('historyChange', this.getHistory(imageId));
     }
   }
@@ -352,7 +352,7 @@ export class Store extends EventEmitter {
         JSON.stringify(nextEntry.snapshot)
       );
       this.applyImageState(imageId, nextEntry.imageSnapshot);
-      this.emitImageRefresh(imageId);
+      this.emit('annotationsRefresh', imageId);
       this.emit('historyChange', this.getHistory(imageId));
     }
   }
