@@ -13,6 +13,10 @@ import type {
   TextAnnotation,
   HighlightAnnotation,
   BlurAnnotation,
+  MeasureAnnotation,
+  CalloutAnnotation,
+  CaptionAnnotation,
+  CurveAnnotation,
 } from '../types';
 import { uid } from '../utils/uid';
 
@@ -50,7 +54,7 @@ export class Canvas {
   private isDrawing = false;
   private startPoint: { x: number; y: number } | null = null;
   private currentPoints: number[] = [];
-  private previewShape: Konva.Shape | null = null;
+  private previewShape: Konva.Shape | Konva.Group | null = null;
 
   // Shape references
   private shapeRefs: Map<string, Konva.Shape | Konva.Group> = new Map();
@@ -148,6 +152,7 @@ export class Canvas {
     this.store.on('annotationAdd', () => this.renderAnnotations());
     this.store.on('annotationUpdate', () => this.renderAnnotations());
     this.store.on('annotationDelete', () => this.renderAnnotations());
+    this.store.on('annotationsRefresh', () => this.renderAnnotations());
     this.store.on('historyChange', () => this.renderAnnotations());
     this.store.on('zoomChange', () => this.updateTransform());
     this.store.on('positionChange', () => this.updateTransform());
@@ -258,13 +263,77 @@ export class Canvas {
       this.currentPoints.push(point.x, point.y);
       this.previewShape = new Konva.Line({
         points: this.currentPoints,
-        stroke: tool === 'highlight' ? state.highlightColor : state.color,
+        stroke: state.color,
         strokeWidth: tool === 'highlight' ? state.strokeWidth * 4 : state.strokeWidth,
         opacity: tool === 'highlight' ? 0.4 : 1,
         tension: 0.5,
         lineCap: 'round',
         lineJoin: 'round',
         globalCompositeOperation: tool === 'highlight' ? 'multiply' : 'source-over',
+      });
+    } else if (tool === 'callout') {
+      const rect = this.getRectFromPoints(this.startPoint, point);
+      const tailH = Math.min(15, rect.height * 0.3);
+      const cornerR = Math.min(12, rect.width * 0.1, rect.height * 0.1);
+      const group = new Konva.Group();
+      group.add(new Konva.Rect({
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        stroke: state.color,
+        strokeWidth: state.strokeWidth,
+        cornerRadius: cornerR,
+        dash: [5, 5],
+        fill: state.color,
+        opacity: 0.7,
+      }));
+      // Tail pointer
+      group.add(new Konva.Line({
+        points: [
+          rect.x + rect.width * 0.3, rect.y + rect.height,
+          rect.x + rect.width * 0.2, rect.y + rect.height + tailH,
+          rect.x + rect.width * 0.5, rect.y + rect.height,
+        ],
+        stroke: state.color,
+        strokeWidth: state.strokeWidth,
+        closed: true,
+        fill: state.color,
+        opacity: 0.7,
+      }));
+      this.previewShape = group;
+    } else if (tool === 'caption') {
+      const rect = this.getRectFromPoints(this.startPoint, point);
+      const barH = Math.min(30, rect.height * 0.25);
+      const group = new Konva.Group();
+      // Frame border
+      group.add(new Konva.Rect({
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        stroke: state.color,
+        strokeWidth: state.strokeWidth,
+        dash: [5, 5],
+      }));
+      // Caption bar
+      group.add(new Konva.Rect({
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: barH,
+        fill: state.color,
+        opacity: 0.8,
+      }));
+      this.previewShape = group;
+    } else if (tool === 'curve') {
+      // Preview as a straight line; user bends it after placing
+      this.previewShape = new Konva.Line({
+        points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
+        stroke: state.color,
+        strokeWidth: state.strokeWidth,
+        dash: [5, 5],
+        lineCap: 'round',
       });
     } else if (tool === 'rectangle' || tool === 'blur') {
       const rect = this.getRectFromPoints(this.startPoint, point);
@@ -307,6 +376,39 @@ export class Canvas {
         strokeWidth: state.strokeWidth,
         dash: [5, 5],
       });
+    } else if (tool === 'measure') {
+      const angle = Math.atan2(point.y - this.startPoint.y, point.x - this.startPoint.x);
+      const capLen = 8;
+
+      const group = new Konva.Group();
+      group.add(new Konva.Line({
+        points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
+        stroke: state.color,
+        strokeWidth: state.strokeWidth,
+        dash: [5, 5],
+      }));
+      // End caps
+      group.add(new Konva.Line({
+        points: [
+          this.startPoint.x + Math.sin(angle) * capLen,
+          this.startPoint.y - Math.cos(angle) * capLen,
+          this.startPoint.x - Math.sin(angle) * capLen,
+          this.startPoint.y + Math.cos(angle) * capLen,
+        ],
+        stroke: state.color,
+        strokeWidth: state.strokeWidth,
+      }));
+      group.add(new Konva.Line({
+        points: [
+          point.x + Math.sin(angle) * capLen,
+          point.y - Math.cos(angle) * capLen,
+          point.x - Math.sin(angle) * capLen,
+          point.y + Math.cos(angle) * capLen,
+        ],
+        stroke: state.color,
+        strokeWidth: state.strokeWidth,
+      }));
+      this.previewShape = group;
     } else if (tool === 'crop') {
       const rect = this.getRectFromPoints(this.startPoint, point);
       this.previewShape = new Konva.Rect({
@@ -374,7 +476,7 @@ export class Canvas {
             type: 'highlight',
             imageId: image.id,
             createdAt: Date.now(),
-            color: state.highlightColor,
+            color: state.color,
             opacity: 0.4,
             points: this.currentPoints,
             strokeWidth: state.strokeWidth * 4,
@@ -457,6 +559,23 @@ export class Canvas {
         break;
       }
 
+      case 'measure': {
+        const dist = Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y);
+        if (dist > Canvas.LINE_MIN_LENGTH) {
+          annotation = {
+            id: uid(),
+            type: 'measure',
+            imageId: image.id,
+            createdAt: Date.now(),
+            color: state.color,
+            opacity: 1,
+            points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
+            strokeWidth: state.strokeWidth,
+          } as MeasureAnnotation;
+        }
+        break;
+      }
+
       case 'text': {
         // Convert screen fontSize to image-space so text appears readable at current zoom
         const effectiveFontSize = Math.round(state.fontSize / state.scale);
@@ -473,6 +592,74 @@ export class Canvas {
           fontSize: effectiveFontSize,
           fontFamily: 'Arial',
         } as TextAnnotation;
+        break;
+      }
+
+      case 'callout': {
+        const rect = this.getRectFromPoints(this.startPoint, point);
+        if (rect.width > Canvas.SHAPE_MIN_SIZE && rect.height > Canvas.SHAPE_MIN_SIZE) {
+          const effectiveFontSize = Math.round(state.fontSize / state.scale);
+          annotation = {
+            id: uid(),
+            type: 'callout',
+            imageId: image.id,
+            createdAt: Date.now(),
+            color: state.color,
+            opacity: 1,
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            text: 'Your text here',
+            fontSize: effectiveFontSize,
+            fontFamily: 'Arial',
+            strokeWidth: state.strokeWidth,
+          } as CalloutAnnotation;
+        }
+        break;
+      }
+
+      case 'caption': {
+        const rect = this.getRectFromPoints(this.startPoint, point);
+        if (rect.width > Canvas.SHAPE_MIN_SIZE && rect.height > Canvas.SHAPE_MIN_SIZE) {
+          const effectiveFontSize = Math.round(state.fontSize / state.scale);
+          annotation = {
+            id: uid(),
+            type: 'caption',
+            imageId: image.id,
+            createdAt: Date.now(),
+            color: state.color,
+            opacity: 1,
+            x: rect.x,
+            y: rect.y,
+            width: rect.width,
+            height: rect.height,
+            text: 'Your text here',
+            fontSize: effectiveFontSize,
+            fontFamily: 'Arial',
+            strokeWidth: state.strokeWidth,
+          } as CaptionAnnotation;
+        }
+        break;
+      }
+
+      case 'curve': {
+        const dist = Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y);
+        if (dist > Canvas.LINE_MIN_LENGTH) {
+          // Control point starts on the line (straight); user drags it to curve
+          const midX = (this.startPoint.x + point.x) / 2;
+          const midY = (this.startPoint.y + point.y) / 2;
+          annotation = {
+            id: uid(),
+            type: 'curve',
+            imageId: image.id,
+            createdAt: Date.now(),
+            color: state.color,
+            opacity: 1,
+            points: [this.startPoint.x, this.startPoint.y, midX, midY, point.x, point.y],
+            strokeWidth: state.strokeWidth,
+          } as CurveAnnotation;
+        }
         break;
       }
 
@@ -509,6 +696,8 @@ export class Canvas {
       this.store.addAnnotation(image.id, annotation);
       if (tool === 'text') {
         this.store.selectAnnotation(annotation.id);
+        this.store.setTool('select');
+      } else if (tool === 'curve' || tool === 'caption' || tool === 'callout') {
         this.store.setTool('select');
       }
     }
@@ -1045,7 +1234,7 @@ export class Canvas {
           newPoints.push(pts[i] + dx, pts[i + 1] + dy);
         }
         this.store.updateAnnotation(image.id, annotation.id, { points: newPoints });
-      } else if (annotation.type === 'arrow' || annotation.type === 'line') {
+      } else if (annotation.type === 'arrow' || annotation.type === 'line' || annotation.type === 'measure') {
         const dx = node.x();
         const dy = node.y();
         node.x(0);
@@ -1069,7 +1258,14 @@ export class Canvas {
       node.scaleX(1);
       node.scaleY(1);
 
-      if (annotation.type === 'rectangle' || annotation.type === 'blur') {
+      if (annotation.type === 'callout' || annotation.type === 'caption') {
+        this.store.updateAnnotation(image.id, annotation.id, {
+          x: node.x(),
+          y: node.y(),
+          width: Math.max(20, annotation.width * scaleX),
+          height: Math.max(20, annotation.height * scaleY),
+        });
+      } else if (annotation.type === 'rectangle' || annotation.type === 'blur') {
         this.store.updateAnnotation(image.id, annotation.id, {
           x: node.x(),
           y: node.y(),
@@ -1196,6 +1392,331 @@ export class Canvas {
         line.on('dragmove', handleDragMove);
         line.on('dragend', handleDragEnd);
         return line;
+      }
+
+      case 'measure': {
+        const [x1, y1, x2, y2] = annotation.points;
+        const angle = Math.atan2(y2 - y1, x2 - x1);
+        const capLen = 8;
+
+        const group = new Konva.Group({ draggable: isSelected });
+
+        group.add(new Konva.Line({
+          points: annotation.points,
+          stroke: annotation.color,
+          strokeWidth: annotation.strokeWidth,
+          opacity: annotation.opacity,
+          lineCap: 'round',
+          hitStrokeWidth: Math.max(annotation.strokeWidth, 15),
+        }));
+
+        // End caps (perpendicular lines at each endpoint)
+        group.add(new Konva.Line({
+          points: [
+            x1 + Math.sin(angle) * capLen, y1 - Math.cos(angle) * capLen,
+            x1 - Math.sin(angle) * capLen, y1 + Math.cos(angle) * capLen,
+          ],
+          stroke: annotation.color,
+          strokeWidth: annotation.strokeWidth,
+          opacity: annotation.opacity,
+        }));
+        group.add(new Konva.Line({
+          points: [
+            x2 + Math.sin(angle) * capLen, y2 - Math.cos(angle) * capLen,
+            x2 - Math.sin(angle) * capLen, y2 + Math.cos(angle) * capLen,
+          ],
+          stroke: annotation.color,
+          strokeWidth: annotation.strokeWidth,
+          opacity: annotation.opacity,
+        }));
+
+        group.on('click tap', handleClick);
+        group.on('dragmove', handleDragMove);
+        group.on('dragend', handleDragEnd);
+        return group;
+      }
+
+      case 'curve': {
+        // points stores 3 pass-through points: start, mid, end
+        const [x1, y1, mx, my, x2, y2] = annotation.points;
+        const group = new Konva.Group();
+
+        // Calculate true quadratic bezier control point so curve passes through mid point
+        // At t=0.5: P = (1-t)²P0 + 2t(1-t)C + t²P2 → C = 2M - 0.5(P0 + P2)
+        // Calculate true quadratic bezier control point so curve passes through mid point
+        // At t=0.5: P = (1-t)²P0 + 2t(1-t)C + t²P2 → C = 2M - 0.5(P0 + P2)
+        const getBezierCP = (sx: number, sy: number, pmx: number, pmy: number, ex: number, ey: number) => ({
+          x: 2 * pmx - 0.5 * (sx + ex),
+          y: 2 * pmy - 0.5 * (sy + ey),
+        });
+
+        const cp = getBezierCP(x1, y1, mx, my, x2, y2);
+
+        // Draw quadratic bezier using custom shape — passes exactly through all 3 points
+        const curveShape = new Konva.Shape({
+          stroke: annotation.color,
+          strokeWidth: annotation.strokeWidth,
+          opacity: annotation.opacity,
+          lineCap: 'round',
+          hitStrokeWidth: Math.max(annotation.strokeWidth, 20),
+          sceneFunc: (ctx, shape) => {
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.quadraticCurveTo(cp.x, cp.y, x2, y2);
+            ctx.fillStrokeShape(shape);
+          },
+        });
+        group.add(curveShape);
+
+        // Three draggable handles — always visible
+        const handleRadius = 10;
+        const makeHandle = (hx: number, hy: number) => {
+          return new Konva.Circle({
+            x: hx,
+            y: hy,
+            radius: handleRadius,
+            fill: '#cccccc',
+            opacity: 0.7,
+            stroke: '#333333',
+            strokeWidth: 2,
+            draggable: true,
+          });
+        };
+
+        const startHandle = makeHandle(x1, y1);
+        const midHandle = makeHandle(cp.x, cp.y);
+        const endHandle = makeHandle(x2, y2);
+
+        // Dashed guide lines from endpoints to bezier control point (opposite side of curve)
+        const guideLine1 = new Konva.Line({
+          points: [x1, y1, cp.x, cp.y],
+          stroke: '#000000',
+          strokeWidth: 1,
+          opacity: 0.5,
+          dash: [4, 4],
+          listening: false,
+        });
+        const guideLine2 = new Konva.Line({
+          points: [cp.x, cp.y, x2, y2],
+          stroke: '#000000',
+          strokeWidth: 1,
+          opacity: 0.5,
+          dash: [4, 4],
+          listening: false,
+        });
+        group.add(guideLine1);
+        group.add(guideLine2);
+
+        const updateCurve = () => {
+          const sx = startHandle.x(), sy = startHandle.y();
+          const cpx = midHandle.x(), cpy = midHandle.y();
+          const ex = endHandle.x(), ey = endHandle.y();
+
+          // Mid handle is now at the CP position; use it directly for the curve
+          curveShape.sceneFunc((ctx, shape) => {
+            ctx.beginPath();
+            ctx.moveTo(sx, sy);
+            ctx.quadraticCurveTo(cpx, cpy, ex, ey);
+            ctx.fillStrokeShape(shape);
+          });
+          guideLine1.points([sx, sy, cpx, cpy]);
+          guideLine2.points([cpx, cpy, ex, ey]);
+          group.getLayer()?.batchDraw();
+        };
+
+        // Reverse-calculate mid point (on curve) from CP for storage
+        // C = 2M - 0.5(P0+P2) → M = 0.5*C + 0.25*(P0+P2)
+        const commitPoints = () => {
+          const cpx = midHandle.x(), cpy = midHandle.y();
+          const sx = startHandle.x(), sy = startHandle.y();
+          const ex = endHandle.x(), ey = endHandle.y();
+          const storedMx = 0.5 * cpx + 0.25 * (sx + ex);
+          const storedMy = 0.5 * cpy + 0.25 * (sy + ey);
+          this.store.updateAnnotation(image.id, annotation.id, {
+            points: [sx, sy, storedMx, storedMy, ex, ey],
+          });
+        };
+
+        [startHandle, midHandle, endHandle].forEach((handle) => {
+          handle.on('dragmove', (e) => {
+            e.cancelBubble = true;
+            updateCurve();
+          });
+          handle.on('dragend', (e) => {
+            e.cancelBubble = true;
+            commitPoints();
+          });
+        });
+
+        group.add(startHandle);
+        group.add(midHandle);
+        group.add(endHandle);
+
+        group.on('click tap', handleClick);
+        return group;
+      }
+
+      case 'caption': {
+        const barH = Math.min(30, annotation.height * 0.25);
+        const padding = 6;
+        const availW = annotation.width - padding * 2;
+
+        // Auto-fit font size for caption bar
+        let fitFontSize = annotation.fontSize;
+        const tempText = new Konva.Text({
+          text: annotation.text,
+          fontSize: fitFontSize,
+          fontFamily: annotation.fontFamily,
+          width: availW,
+        });
+        while (fitFontSize > 8 && tempText.height() > barH - padding) {
+          fitFontSize -= 1;
+          tempText.fontSize(fitFontSize);
+        }
+        tempText.destroy();
+
+        const group = new Konva.Group({
+          x: annotation.x,
+          y: annotation.y,
+          width: annotation.width,
+          height: annotation.height,
+          draggable: isSelected,
+        });
+
+        // Hit rect
+        group.add(new Konva.Rect({
+          width: annotation.width,
+          height: annotation.height,
+          fill: 'transparent',
+          listening: true,
+        }));
+
+        // Frame border
+        group.add(new Konva.Rect({
+          width: annotation.width,
+          height: annotation.height,
+          stroke: annotation.color,
+          strokeWidth: annotation.strokeWidth,
+          opacity: annotation.opacity,
+        }));
+
+        // Caption bar background
+        group.add(new Konva.Rect({
+          width: annotation.width,
+          height: barH,
+          fill: annotation.color,
+          opacity: annotation.opacity,
+        }));
+
+        // Caption text (white)
+        group.add(new Konva.Text({
+          x: padding,
+          y: 0,
+          width: availW,
+          height: barH,
+          text: annotation.text,
+          fontSize: fitFontSize,
+          fontFamily: annotation.fontFamily,
+          fill: '#ffffff',
+          opacity: annotation.opacity,
+          verticalAlign: 'middle',
+        }));
+
+        group.on('click tap', handleClick);
+        group.on('dblclick dbltap', () => {
+          this.store.emit('textEditRequest', annotation);
+        });
+        group.on('dragmove', handleDragMove);
+        group.on('dragend', handleDragEnd);
+        group.on('transformend', handleTransformEnd);
+        return group;
+      }
+
+      case 'callout': {
+        const tailH = Math.min(15, annotation.height * 0.3);
+        const cornerR = Math.min(12, annotation.width * 0.1, annotation.height * 0.1);
+        const padding = 8;
+        const availW = annotation.width - padding * 2;
+        const availH = annotation.height - padding * 2;
+
+        // Auto-fit font size: start from stored fontSize, shrink until text fits
+        let fitFontSize = annotation.fontSize;
+        const tempText = new Konva.Text({
+          text: annotation.text,
+          fontSize: fitFontSize,
+          fontFamily: annotation.fontFamily,
+          width: availW,
+        });
+        while (fitFontSize > 8 && tempText.height() > availH) {
+          fitFontSize -= 1;
+          tempText.fontSize(fitFontSize);
+        }
+        tempText.destroy();
+
+        const totalH = annotation.height + tailH;
+        const group = new Konva.Group({
+          x: annotation.x,
+          y: annotation.y,
+          width: annotation.width,
+          height: totalH,
+          draggable: isSelected,
+        });
+
+        // Invisible hit rect covering full area (bubble + tail) for click detection
+        group.add(new Konva.Rect({
+          width: annotation.width,
+          height: totalH,
+          fill: 'transparent',
+          listening: true,
+        }));
+
+        // Bubble background
+        group.add(new Konva.Rect({
+          width: annotation.width,
+          height: annotation.height,
+          stroke: annotation.color,
+          strokeWidth: annotation.strokeWidth,
+          cornerRadius: cornerR,
+          fill: annotation.color,
+          opacity: annotation.opacity,
+        }));
+
+        // Tail pointer
+        group.add(new Konva.Line({
+          points: [
+            annotation.width * 0.3, annotation.height,
+            annotation.width * 0.2, annotation.height + tailH,
+            annotation.width * 0.5, annotation.height,
+          ],
+          stroke: annotation.color,
+          strokeWidth: annotation.strokeWidth,
+          closed: true,
+          fill: annotation.color,
+          opacity: annotation.opacity,
+        }));
+
+        // Text inside (white, auto-sized)
+        group.add(new Konva.Text({
+          x: padding,
+          y: padding,
+          width: availW,
+          height: availH,
+          text: annotation.text,
+          fontSize: fitFontSize,
+          fontFamily: annotation.fontFamily,
+          fill: '#ffffff',
+          opacity: annotation.opacity,
+          verticalAlign: 'middle',
+        }));
+
+        group.on('click tap', handleClick);
+        group.on('dblclick dbltap', () => {
+          this.store.emit('textEditRequest', annotation);
+        });
+        group.on('dragmove', handleDragMove);
+        group.on('dragend', handleDragEnd);
+        group.on('transformend', handleTransformEnd);
+        return group;
       }
 
       case 'text': {

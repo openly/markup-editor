@@ -9,7 +9,11 @@ export type ToolType =
   | 'text'
   | 'highlight'
   | 'crop'
-  | 'blur';
+  | 'blur'
+  | 'measure'
+  | 'callout'
+  | 'caption'
+  | 'curve';
 
 // Annotation types
 export type AnnotationType = Exclude<ToolType, 'select' | 'crop'>;
@@ -86,6 +90,43 @@ export interface BlurAnnotation extends BaseAnnotation {
   mode: 'blur' | 'redact';
 }
 
+export interface MeasureAnnotation extends BaseAnnotation {
+  type: 'measure';
+  points: [number, number, number, number];
+  strokeWidth: number;
+}
+
+export interface CalloutAnnotation extends BaseAnnotation {
+  type: 'callout';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  strokeWidth: number;
+  fill?: string;
+}
+
+export interface CaptionAnnotation extends BaseAnnotation {
+  type: 'caption';
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+  fontSize: number;
+  fontFamily: string;
+  strokeWidth: number;
+}
+
+export interface CurveAnnotation extends BaseAnnotation {
+  type: 'curve';
+  points: number[];
+  strokeWidth: number;
+}
+
 export type Annotation =
   | PenAnnotation
   | RectAnnotation
@@ -94,7 +135,11 @@ export type Annotation =
   | LineAnnotation
   | TextAnnotation
   | HighlightAnnotation
-  | BlurAnnotation;
+  | BlurAnnotation
+  | MeasureAnnotation
+  | CalloutAnnotation
+  | CaptionAnnotation
+  | CurveAnnotation;
 
 // History
 export interface HistoryEntry {
