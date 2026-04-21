@@ -9,7 +9,7 @@ export const lightTheme: ThemeColors = {
   textMuted: '#6b7280',
   primary: '#3b82f6',
   primaryHover: '#2563eb',
-  canvasBackground: '#1f2937',
+  canvasBackground: '#000000',
   toolbarBackground: '#ffffff',
   panelBackground: '#f9fafb',
 };
@@ -23,7 +23,7 @@ export const darkTheme: ThemeColors = {
   textMuted: '#9ca3af',
   primary: '#3b82f6',
   primaryHover: '#60a5fa',
-  canvasBackground: '#0f172a',
+  canvasBackground: '#000000',
   toolbarBackground: '#1f2937',
   panelBackground: '#1f2937',
 };

@@ -26,7 +26,7 @@ export const styles = `
 .me-topbar-section {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0px;
 }
 
 .me-topbar-center {
@@ -215,7 +215,7 @@ export const styles = `
 }
 
 .me-history-toggle {
-  display: flex;
+  display: none;
   align-items: flex-start;
   padding: 8px 2px;
   background: var(--me-panel-bg);
