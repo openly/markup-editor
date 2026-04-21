@@ -163,7 +163,7 @@ export class UI {
       leftSection.appendChild(navText);
       leftSection.appendChild(nextBtn);
     }
-    leftSection.appendChild(imageName);
+    // leftSection.appendChild(imageName);
 
     // Center section: Rotation and zoom
     const centerSection = document.createElement('div');
@@ -461,7 +461,7 @@ export class UI {
     const actionMeta: Record<string, { label: string; icon: keyof typeof icons; shortcut: string; action: () => void }> = {
       '__undo': { label: 'Undo', icon: 'undo', shortcut: 'Cmd+Z', action: () => { const img = this.store.getCurrentImage(); if (img) this.store.undo(img.id); } },
       '__redo': { label: 'Redo', icon: 'redo', shortcut: 'Cmd+Shift+Z', action: () => { const img = this.store.getCurrentImage(); if (img) this.store.redo(img.id); } },
-      '__history': { label: 'History', icon: 'panelRight', shortcut: '', action: () => { const hw = this.root.querySelector('.me-history-wrapper'); if (hw) hw.classList.toggle('collapsed'); } },
+      '__history': { label: 'History', icon: 'panelRight', shortcut: '', action: () => { const hw = this.root.querySelector('.me-history-wrapper'); const ht = this.root.querySelector('.me-history-toggle') as HTMLElement; if (hw) { hw.classList.toggle('collapsed'); if (ht) ht.style.display = hw.classList.contains('collapsed') ? 'none' : 'flex'; } } },
     };
 
     // Add all hidden tools to the dropdown
@@ -758,6 +758,9 @@ export class UI {
     toggleBtn.appendChild(createIcon('panelRight'));
     toggleBtn.onclick = () => {
       wrapper.classList.toggle('collapsed');
+      if (wrapper.classList.contains('collapsed')) {
+        toggleStrip.style.display = 'none';
+      }
     };
 
     toggleStrip.appendChild(toggleBtn);
