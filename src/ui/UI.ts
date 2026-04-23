@@ -254,8 +254,8 @@ export class UI {
     const rightSection = document.createElement('div');
     rightSection.className = 'me-topbar-section';
 
-    this.overlaySection = this.createOverlaySection();
-    rightSection.appendChild(this.overlaySection);
+    // this.overlaySection = this.createOverlaySection();
+    // rightSection.appendChild(this.overlaySection);
 
     topBar.appendChild(leftSection);
     topBar.appendChild(centerSection);
