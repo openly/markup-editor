@@ -190,14 +190,14 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
       const image = this.store.getCurrentImage();
 
       // Undo
-      if (isMeta && e.key === 'z' && !e.shiftKey) {
+      if (isMeta && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         if (image) this.store.undo(image.id);
         return;
       }
 
       // Redo
-      if ((isMeta && e.shiftKey && e.key === 'z') || (isMeta && e.key === 'y')) {
+      if ((isMeta && e.shiftKey && e.key.toLowerCase() === 'z') || (isMeta && e.key.toLowerCase() === 'y')) {
         e.preventDefault();
         if (image) this.store.redo(image.id);
         return;
