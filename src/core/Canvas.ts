@@ -152,7 +152,14 @@ export class Canvas {
     this.store.on('annotationAdd', () => this.renderAnnotations());
     this.store.on('annotationUpdate', () => this.renderAnnotations());
     this.store.on('annotationDelete', () => this.renderAnnotations());
-    this.store.on('annotationsRefresh', () => this.renderAnnotations());
+    this.store.on('annotationsRefresh', () => {
+      const currentImage = this.store.getCurrentImage();
+      if (currentImage && this.imageElement && this.imageElement.src !== currentImage.url) {
+        this.loadImage(currentImage.url).then(() => this.renderAnnotations());
+      } else {
+        this.renderAnnotations();
+      }
+    });
     this.store.on('historyChange', () => this.renderAnnotations());
     this.store.on('zoomChange', () => this.updateTransform());
     this.store.on('positionChange', () => this.updateTransform());
@@ -1128,6 +1135,18 @@ export class Canvas {
 
   getGridLayer(): Konva.Layer {
     return this.gridLayer;
+  }
+
+  hideTransformer(): { wasVisible: boolean } {
+    const wasVisible = this.transformer.visible();
+    this.transformer.visible(false);
+    this.annotationLayer.batchDraw();
+    return { wasVisible };
+  }
+
+  showTransformer(): void {
+    this.transformer.visible(true);
+    this.annotationLayer.batchDraw();
   }
 
   fitToScreen(): void {

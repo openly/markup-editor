@@ -233,6 +233,10 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
           h: 'highlight',
           c: 'crop',
           b: 'blur',
+          u: 'curve',
+          f: 'caption',
+          k: 'callout',
+          m: 'measure',
         };
 
         const tool = toolMap[e.key.toLowerCase()];
@@ -627,10 +631,11 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     stage.width(dims.width);
     stage.height(dims.height);
 
-    // Hide grid layer during export
+    // Hide grid layer and transformer during export
     const gridLayer = this.canvas.getGridLayer();
     const gridWasVisible = gridLayer.visible();
     gridLayer.visible(false);
+    const { wasVisible: transformerWasVisible } = this.canvas.hideTransformer();
 
     const dataUrl = stage.toDataURL({
       mimeType: format === 'png' ? 'image/png' : 'image/jpeg',
@@ -643,6 +648,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     });
 
     // Restore original state
+    if (transformerWasVisible) this.canvas.showTransformer();
     gridLayer.visible(gridWasVisible);
     stage.width(originalWidth);
     stage.height(originalHeight);
