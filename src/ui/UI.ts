@@ -255,7 +255,7 @@ export class UI {
     rightSection.className = 'me-topbar-section';
 
     this.overlaySection = this.createOverlaySection();
-    rightSection.appendChild(this.overlaySection);
+    // rightSection.appendChild(this.overlaySection);
 
     topBar.appendChild(leftSection);
     topBar.appendChild(centerSection);
