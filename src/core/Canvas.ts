@@ -51,6 +51,8 @@ export class Canvas {
   private compareResizeObserver: ResizeObserver | null = null;
 
   // Drawing state
+  private loadingOverlay: HTMLElement | null = null;
+
   private isDrawing = false;
   private startPoint: { x: number; y: number } | null = null;
   private currentPoints: number[] = [];
@@ -98,6 +100,13 @@ export class Canvas {
       this.stage.height(this.container.offsetHeight);
     });
     resizeObserver.observe(this.container);
+
+    // Create loading overlay (appended after stage so it renders on top)
+    this.loadingOverlay = document.createElement('div');
+    this.loadingOverlay.className = 'me-loading-overlay';
+    this.loadingOverlay.innerHTML = '<div class="me-loading-spinner"></div>';
+    this.loadingOverlay.style.display = 'none';
+    this.container.appendChild(this.loadingOverlay);
   }
 
   private setupEventListeners(): void {
@@ -766,10 +775,12 @@ export class Canvas {
   }
 
   async loadImage(url: string): Promise<void> {
+    if (this.loadingOverlay) this.loadingOverlay.style.display = 'flex';
     return new Promise((resolve, reject) => {
       const img = new Image();
       img.crossOrigin = 'anonymous';
       img.onload = () => {
+        if (this.loadingOverlay) this.loadingOverlay.style.display = 'none';
         this.imageElement = img;
 
         // Store original dimensions on the current ImageData
@@ -809,7 +820,10 @@ export class Canvas {
         this.renderGrid();
         resolve();
       };
-      img.onerror = () => reject(new Error('Failed to load image'));
+      img.onerror = () => {
+        if (this.loadingOverlay) this.loadingOverlay.style.display = 'none';
+        reject(new Error('Failed to load image'));
+      };
       img.src = url;
     });
   }

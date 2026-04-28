@@ -171,6 +171,32 @@ export const styles = `
   height: 100%;
 }
 
+.me-loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--me-canvas-bg);
+  z-index: 10;
+}
+
+.me-loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.2);
+  border-top-color: #ffffff;
+  border-radius: 50%;
+  animation: me-spin 0.8s linear infinite;
+}
+
+@keyframes me-spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Panels */
 .me-panel {
   background: var(--me-panel-bg);
