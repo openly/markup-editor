@@ -1277,7 +1277,7 @@ export class UI {
   private setupStoreListeners(): void {
     this.store.on('toolChange', () => this.updateActiveTool());
     this.store.on('imagesChange', () => { this.updateNavigation(); this.updatePreviewPanel(); });
-    this.store.on('imageChange', () => { this.updateNavigation(); this.updatePreviewPanel(); });
+    this.store.on('imageChange', () => { this.updateNavigation(); this.updatePreviewPanel(); this.updateHistoryPanel(); });
     this.store.on('imageAdd', () => { this.updateNavigation(); this.updatePreviewPanel(); });
     this.store.on('zoomChange', (scale: number) => this.updateZoomText(scale));
     this.store.on('historyChange', () => this.updateHistoryPanel());
