@@ -1781,7 +1781,8 @@ export class Canvas {
           const group = new Konva.Group({
             x: annotation.x,
             y: annotation.y,
-            draggable: isSelected,
+            draggable: false,
+            listening: false,
           });
 
           // Create blur canvas
@@ -1822,25 +1823,6 @@ export class Canvas {
             });
             group.add(blurImage);
           }
-
-          // Selection outline
-          const outline = new Konva.Rect({
-            width: annotation.width,
-            height: annotation.height,
-            stroke: isSelected ? '#0066ff' : 'transparent',
-            strokeWidth: 2,
-            dash: isSelected ? [5, 5] : undefined,
-          });
-          group.add(outline);
-
-          group.on('click tap', handleClick);
-          group.on('dragmove', handleDragMove);
-          group.on('dragend', (e) => {
-            this.store.updateAnnotation(image.id, annotation.id, {
-              x: e.target.x(),
-              y: e.target.y(),
-            });
-          });
 
           return group;
         }
