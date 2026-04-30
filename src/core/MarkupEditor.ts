@@ -631,6 +631,12 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     stage.width(dims.width);
     stage.height(dims.height);
 
+    // Deselect annotations to hide handles/guide lines during export
+    const previousSelectedId = this.store.getState().selectedId;
+    if (previousSelectedId) {
+      this.store.selectAnnotation(null);
+    }
+
     // Hide grid layer and transformer during export
     const gridLayer = this.canvas.getGridLayer();
     const gridWasVisible = gridLayer.visible();
@@ -648,6 +654,9 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     });
 
     // Restore original state
+    if (previousSelectedId) {
+      this.store.selectAnnotation(previousSelectedId);
+    }
     if (transformerWasVisible) this.canvas.showTransformer();
     gridLayer.visible(gridWasVisible);
     stage.width(originalWidth);

@@ -732,11 +732,12 @@ export class Canvas {
     if (currentImage) {
       const annotations = this.store.getAnnotations(currentImage.id);
       const selectedAnnotation = id ? annotations.find(a => a.id === id) : null;
+      const needsRerender = (type?: string) => type === 'measure' || type === 'curve';
       const prevSelectedId = this.shapeRefs.size > 0 ? [...this.shapeRefs.keys()].find(key => {
         const ann = annotations.find(a => a.id === key);
-        return ann?.type === 'measure';
+        return needsRerender(ann?.type);
       }) : null;
-      if (selectedAnnotation?.type === 'measure' || prevSelectedId) {
+      if (needsRerender(selectedAnnotation?.type) || prevSelectedId) {
         this.renderAnnotations();
         return;
       }
@@ -1233,7 +1234,7 @@ export class Canvas {
         this.shapeRefs.set(annotation.id, shape);
         this.annotationLayer.add(shape);
 
-        if (annotation.id === selectedId && annotation.type !== 'measure') {
+        if (annotation.id === selectedId && annotation.type !== 'measure' && annotation.type !== 'curve') {
           this.transformer.nodes([shape]);
           this.transformer.visible(true);
         }
@@ -1570,89 +1571,88 @@ export class Canvas {
         });
         group.add(curveShape);
 
-        // Three draggable handles — always visible
-        const handleRadius = 10;
-        const makeHandle = (hx: number, hy: number) => {
-          return new Konva.Circle({
-            x: hx,
-            y: hy,
-            radius: handleRadius,
-            fill: '#cccccc',
-            opacity: 0.7,
-            stroke: '#333333',
-            strokeWidth: 2,
-            draggable: true,
+        if (isSelected) {
+          // Three draggable handles — only visible when selected
+          const handleRadius = 10;
+          const makeHandle = (hx: number, hy: number) => {
+            return new Konva.Circle({
+              x: hx,
+              y: hy,
+              radius: handleRadius,
+              fill: '#cccccc',
+              opacity: 0.7,
+              stroke: '#333333',
+              strokeWidth: 2,
+              draggable: true,
+            });
+          };
+
+          const startHandle = makeHandle(x1, y1);
+          const midHandle = makeHandle(cp.x, cp.y);
+          const endHandle = makeHandle(x2, y2);
+
+          // Dashed guide lines from endpoints to bezier control point
+          const guideLine1 = new Konva.Line({
+            points: [x1, y1, cp.x, cp.y],
+            stroke: '#000000',
+            strokeWidth: 1,
+            opacity: 0.5,
+            dash: [4, 4],
+            listening: false,
           });
-        };
-
-        const startHandle = makeHandle(x1, y1);
-        const midHandle = makeHandle(cp.x, cp.y);
-        const endHandle = makeHandle(x2, y2);
-
-        // Dashed guide lines from endpoints to bezier control point (opposite side of curve)
-        const guideLine1 = new Konva.Line({
-          points: [x1, y1, cp.x, cp.y],
-          stroke: '#000000',
-          strokeWidth: 1,
-          opacity: 0.5,
-          dash: [4, 4],
-          listening: false,
-        });
-        const guideLine2 = new Konva.Line({
-          points: [cp.x, cp.y, x2, y2],
-          stroke: '#000000',
-          strokeWidth: 1,
-          opacity: 0.5,
-          dash: [4, 4],
-          listening: false,
-        });
-        group.add(guideLine1);
-        group.add(guideLine2);
-
-        const updateCurve = () => {
-          const sx = startHandle.x(), sy = startHandle.y();
-          const cpx = midHandle.x(), cpy = midHandle.y();
-          const ex = endHandle.x(), ey = endHandle.y();
-
-          // Mid handle is now at the CP position; use it directly for the curve
-          curveShape.sceneFunc((ctx, shape) => {
-            ctx.beginPath();
-            ctx.moveTo(sx, sy);
-            ctx.quadraticCurveTo(cpx, cpy, ex, ey);
-            ctx.fillStrokeShape(shape);
+          const guideLine2 = new Konva.Line({
+            points: [cp.x, cp.y, x2, y2],
+            stroke: '#000000',
+            strokeWidth: 1,
+            opacity: 0.5,
+            dash: [4, 4],
+            listening: false,
           });
-          guideLine1.points([sx, sy, cpx, cpy]);
-          guideLine2.points([cpx, cpy, ex, ey]);
-          group.getLayer()?.batchDraw();
-        };
+          group.add(guideLine1);
+          group.add(guideLine2);
 
-        // Reverse-calculate mid point (on curve) from CP for storage
-        // C = 2M - 0.5(P0+P2) → M = 0.5*C + 0.25*(P0+P2)
-        const commitPoints = () => {
-          const cpx = midHandle.x(), cpy = midHandle.y();
-          const sx = startHandle.x(), sy = startHandle.y();
-          const ex = endHandle.x(), ey = endHandle.y();
-          const storedMx = 0.5 * cpx + 0.25 * (sx + ex);
-          const storedMy = 0.5 * cpy + 0.25 * (sy + ey);
-          this.store.updateAnnotation(image.id, annotation.id, {
-            points: [sx, sy, storedMx, storedMy, ex, ey],
-          });
-        };
+          const updateCurve = () => {
+            const sx = startHandle.x(), sy = startHandle.y();
+            const cpx = midHandle.x(), cpy = midHandle.y();
+            const ex = endHandle.x(), ey = endHandle.y();
 
-        [startHandle, midHandle, endHandle].forEach((handle) => {
-          handle.on('dragmove', (e) => {
-            e.cancelBubble = true;
-            updateCurve();
-          });
-          handle.on('dragend', (e) => {
-            e.cancelBubble = true;
-            commitPoints();
-          });
-        });
+            curveShape.sceneFunc((ctx, shape) => {
+              ctx.beginPath();
+              ctx.moveTo(sx, sy);
+              ctx.quadraticCurveTo(cpx, cpy, ex, ey);
+              ctx.fillStrokeShape(shape);
+            });
+            guideLine1.points([sx, sy, cpx, cpy]);
+            guideLine2.points([cpx, cpy, ex, ey]);
+            group.getLayer()?.batchDraw();
+          };
 
-        group.add(startHandle);
-        group.add(midHandle);
-        group.add(endHandle);
+          const commitPoints = () => {
+            const cpx = midHandle.x(), cpy = midHandle.y();
+            const sx = startHandle.x(), sy = startHandle.y();
+            const ex = endHandle.x(), ey = endHandle.y();
+            const storedMx = 0.5 * cpx + 0.25 * (sx + ex);
+            const storedMy = 0.5 * cpy + 0.25 * (sy + ey);
+            this.store.updateAnnotation(image.id, annotation.id, {
+              points: [sx, sy, storedMx, storedMy, ex, ey],
+            });
+          };
+
+          [startHandle, midHandle, endHandle].forEach((handle) => {
+            handle.on('dragmove', (e) => {
+              e.cancelBubble = true;
+              updateCurve();
+            });
+            handle.on('dragend', (e) => {
+              e.cancelBubble = true;
+              commitPoints();
+            });
+          });
+
+          group.add(startHandle);
+          group.add(midHandle);
+          group.add(endHandle);
+        }
 
         group.on('click tap', handleClick);
         return group;
