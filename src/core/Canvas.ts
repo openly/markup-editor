@@ -715,6 +715,9 @@ export class Canvas {
         this.store.setTool('select');
       } else if (tool === 'curve' || tool === 'caption' || tool === 'callout') {
         this.store.setTool('select');
+      } else if (tool === 'measure') {
+        this.store.selectAnnotation(annotation.id);
+        this.store.setTool('select');
       }
     }
 
@@ -724,6 +727,21 @@ export class Canvas {
   }
 
   private handleSelectionChange(id: string | null): void {
+    // Check if selection involves a measure annotation — needs full re-render for handles
+    const currentImage = this.store.getCurrentImage();
+    if (currentImage) {
+      const annotations = this.store.getAnnotations(currentImage.id);
+      const selectedAnnotation = id ? annotations.find(a => a.id === id) : null;
+      const prevSelectedId = this.shapeRefs.size > 0 ? [...this.shapeRefs.keys()].find(key => {
+        const ann = annotations.find(a => a.id === key);
+        return ann?.type === 'measure';
+      }) : null;
+      if (selectedAnnotation?.type === 'measure' || prevSelectedId) {
+        this.renderAnnotations();
+        return;
+      }
+    }
+
     if (!id) {
       this.transformer.nodes([]);
       this.transformer.visible(false);
@@ -1215,7 +1233,7 @@ export class Canvas {
         this.shapeRefs.set(annotation.id, shape);
         this.annotationLayer.add(shape);
 
-        if (annotation.id === selectedId) {
+        if (annotation.id === selectedId && annotation.type !== 'measure') {
           this.transformer.nodes([shape]);
           this.transformer.visible(true);
         }
@@ -1428,44 +1446,95 @@ export class Canvas {
       }
 
       case 'measure': {
-        const [x1, y1, x2, y2] = annotation.points;
-        const angle = Math.atan2(y2 - y1, x2 - x1);
+        let [mx1, my1, mx2, my2] = annotation.points;
         const capLen = 8;
 
-        const group = new Konva.Group({ draggable: isSelected });
+        // Use a non-draggable parent group; dragging is done via handles only
+        const group = new Konva.Group();
 
-        group.add(new Konva.Line({
-          points: annotation.points,
+        const mainLine = new Konva.Line({
+          points: [mx1, my1, mx2, my2],
           stroke: annotation.color,
           strokeWidth: annotation.strokeWidth,
           opacity: annotation.opacity,
           lineCap: 'round',
           hitStrokeWidth: Math.max(annotation.strokeWidth, 15),
-        }));
+        });
+        group.add(mainLine);
 
-        // End caps (perpendicular lines at each endpoint)
-        group.add(new Konva.Line({
+        const updateCaps = (p: number[]) => {
+          const a = Math.atan2(p[3] - p[1], p[2] - p[0]);
+          cap1.points([
+            p[0] + Math.sin(a) * capLen, p[1] - Math.cos(a) * capLen,
+            p[0] - Math.sin(a) * capLen, p[1] + Math.cos(a) * capLen,
+          ]);
+          cap2.points([
+            p[2] + Math.sin(a) * capLen, p[3] - Math.cos(a) * capLen,
+            p[2] - Math.sin(a) * capLen, p[3] + Math.cos(a) * capLen,
+          ]);
+        };
+
+        const initAngle = Math.atan2(my2 - my1, mx2 - mx1);
+        const cap1 = new Konva.Line({
           points: [
-            x1 + Math.sin(angle) * capLen, y1 - Math.cos(angle) * capLen,
-            x1 - Math.sin(angle) * capLen, y1 + Math.cos(angle) * capLen,
+            mx1 + Math.sin(initAngle) * capLen, my1 - Math.cos(initAngle) * capLen,
+            mx1 - Math.sin(initAngle) * capLen, my1 + Math.cos(initAngle) * capLen,
           ],
           stroke: annotation.color,
           strokeWidth: annotation.strokeWidth,
           opacity: annotation.opacity,
-        }));
-        group.add(new Konva.Line({
+        });
+        group.add(cap1);
+
+        const cap2 = new Konva.Line({
           points: [
-            x2 + Math.sin(angle) * capLen, y2 - Math.cos(angle) * capLen,
-            x2 - Math.sin(angle) * capLen, y2 + Math.cos(angle) * capLen,
+            mx2 + Math.sin(initAngle) * capLen, my2 - Math.cos(initAngle) * capLen,
+            mx2 - Math.sin(initAngle) * capLen, my2 + Math.cos(initAngle) * capLen,
           ],
           stroke: annotation.color,
           strokeWidth: annotation.strokeWidth,
           opacity: annotation.opacity,
-        }));
+        });
+        group.add(cap2);
+
+        if (isSelected) {
+          const handleRadius = 18;
+
+          const makeHandle = (cx: number, cy: number, isStart: boolean) => {
+            const hGroup = new Konva.Group({ x: cx, y: cy, draggable: true });
+
+            hGroup.add(new Konva.Circle({
+              radius: handleRadius,
+              fill: 'rgba(100,100,100,0.7)',
+              stroke: '#888',
+              strokeWidth: 2,
+            }));
+
+            hGroup.on('mouseover', () => this.container.style.cursor = 'pointer');
+            hGroup.on('mouseout', () => this.container.style.cursor = '');
+
+            hGroup.on('dragmove', () => {
+              const hx = hGroup.x();
+              const hy = hGroup.y();
+              if (isStart) { mx1 = hx; my1 = hy; } else { mx2 = hx; my2 = hy; }
+              const pts = [mx1, my1, mx2, my2];
+              mainLine.points(pts);
+              updateCaps(pts);
+            });
+
+            hGroup.on('dragend', () => {
+              const pts: [number, number, number, number] = [mx1, my1, mx2, my2];
+              this.store.updateAnnotation(image.id, annotation.id, { points: pts });
+            });
+
+            return hGroup;
+          };
+
+          group.add(makeHandle(mx1, my1, true));
+          group.add(makeHandle(mx2, my2, false));
+        }
 
         group.on('click tap', handleClick);
-        group.on('dragmove', handleDragMove);
-        group.on('dragend', handleDragEnd);
         return group;
       }
 
