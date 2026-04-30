@@ -1997,7 +1997,13 @@ export class Canvas {
     }
 
     if (annotation.type === 'text') {
-      if (!inside(annotation.x, annotation.y)) return null;
+      const textWidth = annotation.width || 200;
+      const textHeight = annotation.fontSize * 1.5;
+      const tx1 = annotation.x;
+      const ty1 = annotation.y;
+      const tx2 = annotation.x + textWidth;
+      const ty2 = annotation.y + textHeight;
+      if (tx2 < x1 || tx1 > x2 || ty2 < y1 || ty1 > y2) return null;
       return { ...annotation, x: shiftX(annotation.x), y: shiftY(annotation.y) };
     }
 
