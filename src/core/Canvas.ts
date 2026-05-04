@@ -57,6 +57,7 @@ export class Canvas {
   private startPoint: { x: number; y: number } | null = null;
   private currentPoints: number[] = [];
   private previewShape: Konva.Shape | Konva.Group | null = null;
+  private previousSelectedId: string | null = null;
 
   // Shape references
   private shapeRefs: Map<string, Konva.Shape | Konva.Group> = new Map();
@@ -733,11 +734,11 @@ export class Canvas {
       const annotations = this.store.getAnnotations(currentImage.id);
       const selectedAnnotation = id ? annotations.find(a => a.id === id) : null;
       const needsRerender = (type?: string) => type === 'measure' || type === 'curve';
-      const prevSelectedId = this.shapeRefs.size > 0 ? [...this.shapeRefs.keys()].find(key => {
-        const ann = annotations.find(a => a.id === key);
-        return needsRerender(ann?.type);
-      }) : null;
-      if (needsRerender(selectedAnnotation?.type) || prevSelectedId) {
+      const prevSelectedAnnotation = this.previousSelectedId
+        ? annotations.find(a => a.id === this.previousSelectedId)
+        : null;
+      this.previousSelectedId = id;
+      if (needsRerender(selectedAnnotation?.type) || needsRerender(prevSelectedAnnotation?.type)) {
         this.renderAnnotations();
         return;
       }
