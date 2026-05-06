@@ -157,7 +157,17 @@ export class Canvas {
   private setupStoreListeners(): void {
     this.store.on('imageChange', () => this.loadCurrentImage());
     this.store.on('imageRotate', () => this.updateImageRotation());
-    this.store.on('toolChange', () => this.updateCursor());
+    this.store.on('toolChange', () => {
+      this.updateCursor();
+      const tool = this.store.getState().currentTool;
+      this.annotationLayer.listening(tool === 'select');
+      if (tool !== 'select') {
+        this.store.selectAnnotation(null);
+        this.transformer.nodes([]);
+        this.transformer.visible(false);
+        this.annotationLayer.batchDraw();
+      }
+    });
     this.store.on('selectionChange', (id: string | null) => this.handleSelectionChange(id));
     this.store.on('annotationAdd', () => this.renderAnnotations());
     this.store.on('annotationUpdate', () => this.renderAnnotations());
@@ -1255,6 +1265,7 @@ export class Canvas {
     const imgH = this.imageElement?.height ?? Infinity;
 
     const handleClick = () => {
+      if (this.store.getState().currentTool !== 'select') return;
       this.store.selectAnnotation(annotation.id);
     };
 
