@@ -58,6 +58,7 @@ export class Canvas {
   private currentPoints: number[] = [];
   private previewShape: Konva.Shape | Konva.Group | null = null;
   private previousSelectedId: string | null = null;
+  private skipNextDeselect = false;
 
   // Shape references
   private shapeRefs: Map<string, Konva.Shape | Konva.Group> = new Map();
@@ -146,6 +147,10 @@ export class Canvas {
 
     // Click on stage to deselect
     this.stage.on('click tap', (e) => {
+      if (this.skipNextDeselect) {
+        this.skipNextDeselect = false;
+        return;
+      }
       if (e.target === this.stage || e.target === this.imageNode) {
         this.store.selectAnnotation(null);
         this.transformer.nodes([]);
@@ -725,7 +730,9 @@ export class Canvas {
         this.store.selectAnnotation(annotation.id);
         this.store.setTool('select');
       } else if (tool === 'curve' || tool === 'caption' || tool === 'callout') {
+        this.skipNextDeselect = true;
         this.store.setTool('select');
+        this.store.selectAnnotation(annotation.id);
       } else if (tool === 'measure') {
         this.store.selectAnnotation(annotation.id);
         this.store.setTool('select');
