@@ -17,7 +17,7 @@ export const styles = `
   align-items: center;
   justify-content: space-between;
   height: 48px;
-  padding: 0 12px;
+  // padding: 0 12px;
   flex-shrink: 0;
   background: var(--me-surface);
   border-bottom: 1px solid var(--me-border);
@@ -38,31 +38,32 @@ export const styles = `
 /* Image preview panel */
 .me-preview-panel {
   display: flex;
+  flex-direction: column;
   align-items: center;
   background: var(--me-surface);
-  border-bottom: 1px solid var(--me-border);
+  border-left: 1px solid var(--me-border);
   flex-shrink: 0;
-  padding: 6px 12px;
+  padding: 12px 6px;
   overflow: hidden;
-  width: 100%;
   box-sizing: border-box;
 }
 
 .me-preview-panel .me-preview-scroll {
-  width: 100%;
+  height: 100%;
 }
 
 .me-preview-scroll {
   display: flex;
+  flex-direction: column;
   gap: 8px;
-  overflow-x: auto;
+  overflow-y: auto;
   scrollbar-width: thin;
   scrollbar-color: var(--me-border) transparent;
   padding: 2px 0;
 }
 
 .me-preview-scroll::-webkit-scrollbar {
-  height: 4px;
+  width: 4px;
 }
 
 .me-preview-scroll::-webkit-scrollbar-track {
@@ -499,7 +500,7 @@ export const styles = `
 .me-nav-text {
   font-size: 13px;
   color: var(--me-text-muted);
-  min-width: 60px;
+  min-width: 36px;
   text-align: center;
 }
 
@@ -1119,7 +1120,7 @@ export const styles = `
   }
 
   .me-preview-panel {
-    padding: 4px 8px;
+    padding: 8px 4px;
   }
 }
 
@@ -1187,7 +1188,7 @@ export const styles = `
   }
 
   .me-preview-panel {
-    padding: 3px 6px;
+    padding: 6px 3px;
   }
 
   .me-preview-scroll {
@@ -1345,7 +1346,7 @@ export const styles = `
   }
 
   .me-preview-panel {
-    padding: 4px 8px;
+    padding: 8px 4px;
   }
 
   /* Overlay dropdown responsive */
@@ -1449,7 +1450,7 @@ export const styles = `
   }
 
   .me-preview-panel {
-    padding: 2px 4px;
+    padding: 4px 2px;
   }
 
   .me-preview-scroll {

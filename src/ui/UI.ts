@@ -98,12 +98,6 @@ export class UI {
       this.root.appendChild(this.topBar);
     }
 
-    // Image preview panel
-    if (!this.options.withoutThumb) {
-      this.previewPanel = this.createPreviewPanel();
-      this.root.appendChild(this.previewPanel);
-    }
-
     // Main content area
     const main = document.createElement('div');
     main.className = 'me-main';
@@ -118,6 +112,12 @@ export class UI {
     this.canvasContainer = document.createElement('div');
     this.canvasContainer.className = 'me-canvas-container';
     main.appendChild(this.canvasContainer);
+
+    // Image preview panel (right side)
+    if (!this.options.withoutThumb) {
+      this.previewPanel = this.createPreviewPanel();
+      main.appendChild(this.previewPanel);
+    }
 
     // History panel
     if (this.options.showHistoryPanel) {
@@ -158,11 +158,6 @@ export class UI {
     imageName.className = 'me-image-name';
     imageName.id = 'me-image-name';
 
-    if (!this.options.withoutThumb) {
-      leftSection.appendChild(prevBtn);
-      leftSection.appendChild(navText);
-      leftSection.appendChild(nextBtn);
-    }
     // leftSection.appendChild(imageName);
 
     // Center section: Rotation and zoom
@@ -256,6 +251,12 @@ export class UI {
 
     this.overlaySection = this.createOverlaySection();
     // rightSection.appendChild(this.overlaySection);
+
+    if (!this.options.withoutThumb) {
+      rightSection.appendChild(prevBtn);
+      rightSection.appendChild(navText);
+      rightSection.appendChild(nextBtn);
+    }
 
     topBar.appendChild(leftSection);
     topBar.appendChild(centerSection);
