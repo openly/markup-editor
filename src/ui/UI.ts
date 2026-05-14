@@ -98,12 +98,6 @@ export class UI {
       this.root.appendChild(this.topBar);
     }
 
-    // Image preview panel
-    if (!this.options.withoutThumb) {
-      this.previewPanel = this.createPreviewPanel();
-      this.root.appendChild(this.previewPanel);
-    }
-
     // Main content area
     const main = document.createElement('div');
     main.className = 'me-main';
@@ -118,6 +112,12 @@ export class UI {
     this.canvasContainer = document.createElement('div');
     this.canvasContainer.className = 'me-canvas-container';
     main.appendChild(this.canvasContainer);
+
+    // Image preview panel (right side)
+    if (!this.options.withoutThumb) {
+      this.previewPanel = this.createPreviewPanel();
+      main.appendChild(this.previewPanel);
+    }
 
     // History panel
     if (this.options.showHistoryPanel) {
@@ -158,11 +158,6 @@ export class UI {
     imageName.className = 'me-image-name';
     imageName.id = 'me-image-name';
 
-    if (!this.options.withoutThumb) {
-      leftSection.appendChild(prevBtn);
-      leftSection.appendChild(navText);
-      leftSection.appendChild(nextBtn);
-    }
     // leftSection.appendChild(imageName);
 
     // Center section: Rotation and zoom
@@ -215,14 +210,26 @@ export class UI {
     fitBtn.onclick = () => this.store.emit('fitToScreen');
     this.topbarCenterItems.push({ el: fitBtn, label: 'Fit to screen', priority: 'tertiary', action: () => this.store.emit('fitToScreen'), iconName: 'maximize' });
 
+    // Undo
+    const topbarUndoBtn = this.createButton('undo', 'Undo (Cmd+Z)');
+    topbarUndoBtn.classList.add('me-topbar-item');
+    topbarUndoBtn.onclick = () => { const img = this.store.getCurrentImage(); if (img) this.store.undo(img.id); };
+    this.topbarCenterItems.push({ el: topbarUndoBtn, label: 'Undo', priority: 'primary', action: () => { const img = this.store.getCurrentImage(); if (img) this.store.undo(img.id); }, iconName: 'undo' });
+
+    // Redo
+    const topbarRedoBtn = this.createButton('redo', 'Redo (Cmd+Shift+Z)');
+    topbarRedoBtn.classList.add('me-topbar-item');
+    topbarRedoBtn.onclick = () => { const img = this.store.getCurrentImage(); if (img) this.store.redo(img.id); };
+    this.topbarCenterItems.push({ el: topbarRedoBtn, label: 'Redo', priority: 'primary', action: () => { const img = this.store.getCurrentImage(); if (img) this.store.redo(img.id); }, iconName: 'redo' });
+
     // Reset 100%
-    const resetBtn = document.createElement('button');
-    resetBtn.className = 'me-btn me-topbar-item';
-    resetBtn.textContent = '100%';
-    resetBtn.style.fontSize = '12px';
-    resetBtn.style.padding = '4px 8px';
-    resetBtn.onclick = () => this.store.resetView();
-    this.topbarCenterItems.push({ el: resetBtn, label: 'Reset 100%', priority: 'tertiary', action: () => this.store.resetView(), iconName: undefined });
+    // const resetBtn = document.createElement('button');
+    // resetBtn.className = 'me-btn me-topbar-item';
+    // resetBtn.textContent = '100%';
+    // resetBtn.style.fontSize = '12px';
+    // resetBtn.style.padding = '4px 8px';
+    // resetBtn.onclick = () => this.store.resetView();
+    // this.topbarCenterItems.push({ el: resetBtn, label: 'Reset 100%', priority: 'tertiary', action: () => this.store.resetView(), iconName: undefined });
 
     // Divider 2
     const divider2 = document.createElement('div');
@@ -256,6 +263,12 @@ export class UI {
 
     this.overlaySection = this.createOverlaySection();
     // rightSection.appendChild(this.overlaySection);
+
+    if (!this.options.withoutThumb) {
+      rightSection.appendChild(prevBtn);
+      rightSection.appendChild(navText);
+      rightSection.appendChild(nextBtn);
+    }
 
     topBar.appendChild(leftSection);
     topBar.appendChild(centerSection);
@@ -314,33 +327,6 @@ export class UI {
     divider2.className = 'me-toolbar-divider';
     toolbar.appendChild(divider2);
 
-    // Undo button
-    const toolbarUndoBtn = document.createElement('button');
-    toolbarUndoBtn.className = 'me-btn me-btn-tool';
-    toolbarUndoBtn.dataset.toolId = '__undo';
-    toolbarUndoBtn.title = 'Undo';
-    toolbarUndoBtn.innerHTML = createIcon('undo').outerHTML;
-    const undoTooltip = document.createElement('span');
-    undoTooltip.className = 'me-tooltip';
-    undoTooltip.textContent = 'Undo (Cmd+Z)';
-    toolbarUndoBtn.appendChild(undoTooltip);
-    toolbarUndoBtn.onclick = () => { const img = this.store.getCurrentImage(); if (img) this.store.undo(img.id); };
-    this.toolButtons.set('__undo', toolbarUndoBtn);
-    toolbar.appendChild(toolbarUndoBtn);
-
-    // Redo button
-    const toolbarRedoBtn = document.createElement('button');
-    toolbarRedoBtn.className = 'me-btn me-btn-tool';
-    toolbarRedoBtn.dataset.toolId = '__redo';
-    toolbarRedoBtn.title = 'Redo';
-    toolbarRedoBtn.innerHTML = createIcon('redo').outerHTML;
-    const redoTooltip = document.createElement('span');
-    redoTooltip.className = 'me-tooltip';
-    redoTooltip.textContent = 'Redo (Cmd+Shift+Z)';
-    toolbarRedoBtn.appendChild(redoTooltip);
-    toolbarRedoBtn.onclick = () => { const img = this.store.getCurrentImage(); if (img) this.store.redo(img.id); };
-    this.toolButtons.set('__redo', toolbarRedoBtn);
-    toolbar.appendChild(toolbarRedoBtn);
 
     // History toggle button
     const toolbarHistoryBtn = document.createElement('button');
@@ -1277,7 +1263,7 @@ export class UI {
   private setupStoreListeners(): void {
     this.store.on('toolChange', () => this.updateActiveTool());
     this.store.on('imagesChange', () => { this.updateNavigation(); this.updatePreviewPanel(); });
-    this.store.on('imageChange', () => { this.updateNavigation(); this.updatePreviewPanel(); });
+    this.store.on('imageChange', () => { this.updateNavigation(); this.updatePreviewPanel(); this.updateHistoryPanel(); });
     this.store.on('imageAdd', () => { this.updateNavigation(); this.updatePreviewPanel(); });
     this.store.on('zoomChange', (scale: number) => this.updateZoomText(scale));
     this.store.on('historyChange', () => this.updateHistoryPanel());

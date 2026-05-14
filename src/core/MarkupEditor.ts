@@ -190,14 +190,14 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
       const image = this.store.getCurrentImage();
 
       // Undo
-      if (isMeta && e.key === 'z' && !e.shiftKey) {
+      if (isMeta && e.key.toLowerCase() === 'z' && !e.shiftKey) {
         e.preventDefault();
         if (image) this.store.undo(image.id);
         return;
       }
 
       // Redo
-      if ((isMeta && e.shiftKey && e.key === 'z') || (isMeta && e.key === 'y')) {
+      if ((isMeta && e.shiftKey && e.key.toLowerCase() === 'z') || (isMeta && e.key.toLowerCase() === 'y')) {
         e.preventDefault();
         if (image) this.store.redo(image.id);
         return;
@@ -631,6 +631,12 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     stage.width(dims.width);
     stage.height(dims.height);
 
+    // Deselect annotations to hide handles/guide lines during export
+    const previousSelectedId = this.store.getState().selectedId;
+    if (previousSelectedId) {
+      this.store.selectAnnotation(null);
+    }
+
     // Hide grid layer and transformer during export
     const gridLayer = this.canvas.getGridLayer();
     const gridWasVisible = gridLayer.visible();
@@ -648,6 +654,9 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     });
 
     // Restore original state
+    if (previousSelectedId) {
+      this.store.selectAnnotation(previousSelectedId);
+    }
     if (transformerWasVisible) this.canvas.showTransformer();
     gridLayer.visible(gridWasVisible);
     stage.width(originalWidth);
