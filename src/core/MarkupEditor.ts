@@ -324,7 +324,45 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     saveBtn.textContent = 'Save';
     saveBtn.onclick = () => {
       const image = this.store.getCurrentImage();
-      if (image) {
+      if (image && annotation.type === 'text') {
+        const measure = document.createElement('canvas').getContext('2d');
+        let fontSize = (annotation as any).fontSize || 16;
+        const fontFamily = (annotation as any).fontFamily || 'Arial';
+        const padding = 8;
+        const annX = (annotation as any).x || 0;
+        const imgWidth = image.originalWidth || 1000;
+        const maxWidth = imgWidth - annX;
+
+        if (measure) {
+          measure.font = `${fontSize}px ${fontFamily}`;
+          let textWidth = measure.measureText(textarea.value).width + padding;
+
+          // Shrink font if text exceeds available image space
+          if (textWidth > maxWidth) {
+            fontSize = Math.max(8, Math.floor(fontSize * (maxWidth / textWidth)));
+            measure.font = `${fontSize}px ${fontFamily}`;
+            textWidth = measure.measureText(textarea.value).width + padding;
+          }
+
+          const finalWidth = Math.min(textWidth, maxWidth);
+          // Auto-reposition: if text would overflow the image right edge, shift it left
+          let newX = annX;
+          if (annX + finalWidth > imgWidth) {
+            newX = Math.max(0, imgWidth - finalWidth);
+          }
+
+          this.store.updateAnnotation(image.id, annotation.id, {
+            text: textarea.value,
+            width: finalWidth,
+            fontSize,
+            x: newX,
+          });
+        } else {
+          this.store.updateAnnotation(image.id, annotation.id, {
+            text: textarea.value,
+          });
+        }
+      } else if (image) {
         this.store.updateAnnotation(image.id, annotation.id, {
           text: textarea.value,
         });
