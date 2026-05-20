@@ -73,6 +73,7 @@ export interface TextAnnotation extends BaseAnnotation {
   fontSize: number;
   fontFamily: string;
   width?: number;
+  height?: number;
 }
 
 export interface HighlightAnnotation extends BaseAnnotation {

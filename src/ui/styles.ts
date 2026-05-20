@@ -1195,77 +1195,10 @@ export const styles = `
     gap: 4px;
   }
 
-  /* Switch toolbar to horizontal top */
-  .me-main {
-    flex-direction: column;
-    overflow: visible;
-    position: relative;
-  }
-
-  .me-toolbar {
-    flex-direction: row;
-    width: 100%;
-    border-right: none;
-    border-bottom: 1px solid var(--me-border);
-    padding: 4px 6px;
-    gap: 2px;
-    overflow: visible;
-    justify-content: center;
-    flex-wrap: wrap;
-    align-items: center;
-    position: relative;
-    z-index: 50;
-  }
-
-  .me-toolbar-divider {
-    width: 1px;
-    height: 24px;
-    margin: 0 4px;
-  }
-
   .me-btn-tool {
     width: 34px;
     height: 34px;
     flex-shrink: 0;
-  }
-
-  .me-btn-tool .me-tooltip {
-    display: none;
-  }
-
-  /* Color picker & stroke picker alignment in horizontal toolbar */
-  .me-color-picker {
-    display: flex;
-    align-items: center;
-    position: static;
-  }
-
-  .me-color-picker .me-btn {
-    padding: 4px;
-  }
-
-  /* Color dropdown: open above, anchored to canvas container */
-  .me-color-dropdown {
-    position: fixed;
-    left: auto;
-    right: auto;
-    bottom: auto;
-    top: auto;
-    margin: 0;
-    padding: 10px;
-    z-index: 200;
-  }
-
-  /* Stroke dropdown: open above */
-  .me-stroke-dropdown {
-    position: fixed;
-    left: auto;
-    right: auto;
-    bottom: auto;
-    top: auto;
-    margin: 0;
-    padding: 6px;
-    z-index: 200;
   }
 
   /* History panel: slide-over drawer on small screens */
@@ -1518,27 +1451,6 @@ export const styles = `
       display: none;
     }
 
-    .me-main {
-      flex-direction: column;
-      overflow: visible;
-      position: relative;
-    }
-
-    .me-toolbar {
-      flex-direction: row;
-      width: 100%;
-      border-right: none;
-      border-bottom: 1px solid var(--me-border);
-      padding: 4px 6px;
-      gap: 2px;
-      overflow: visible;
-      justify-content: center;
-      flex-wrap: wrap;
-      align-items: center;
-      position: relative;
-      z-index: 50;
-    }
-
     .me-history-wrapper {
       position: absolute;
       top: 0;
@@ -1556,22 +1468,6 @@ export const styles = `
 
     .me-history-wrapper .me-history-panel {
       width: 200px;
-    }
-
-    .me-toolbar-divider {
-      width: 1px;
-      height: 24px;
-      margin: 0 4px;
-    }
-
-    .me-btn-tool .me-tooltip {
-      display: none;
-    }
-
-    .me-color-picker {
-      display: flex;
-      align-items: center;
-      position: static;
     }
 
     .me-modal-textarea {
