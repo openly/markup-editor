@@ -367,6 +367,17 @@ export class Canvas {
         dash: [5, 5],
         lineCap: 'round',
       });
+    } else if (tool === 'text') {
+      const rect = this.getRectFromPoints(this.startPoint, point);
+      this.previewShape = new Konva.Rect({
+        x: rect.x,
+        y: rect.y,
+        width: rect.width,
+        height: rect.height,
+        stroke: state.color,
+        strokeWidth: 1,
+        dash: [5, 5],
+      });
     } else if (tool === 'rectangle' || tool === 'blur') {
       const rect = this.getRectFromPoints(this.startPoint, point);
       this.previewShape = new Konva.Rect({
@@ -609,8 +620,12 @@ export class Canvas {
       }
 
       case 'text': {
-        // Convert screen fontSize to image-space so text appears readable at current zoom
+        const rect = this.getRectFromPoints(this.startPoint, point);
         const effectiveFontSize = Math.round(state.fontSize / state.scale);
+        // If user dragged a region, use it; otherwise fall back to click-to-create
+        const hasDragSize = rect.width > Canvas.SHAPE_MIN_SIZE && rect.height > Canvas.SHAPE_MIN_SIZE;
+        // Scale font size to fit the dragged height (with padding)
+        const dragFontSize = Math.max(8, Math.round(rect.height * 0.6));
         annotation = {
           id: uid(),
           type: 'text',
@@ -618,11 +633,12 @@ export class Canvas {
           createdAt: Date.now(),
           color: state.color,
           opacity: 1,
-          x: this.startPoint.x,
-          y: this.startPoint.y,
+          x: hasDragSize ? rect.x : this.startPoint.x,
+          y: hasDragSize ? rect.y : this.startPoint.y,
           text: 'Text',
-          fontSize: effectiveFontSize,
+          fontSize: hasDragSize ? dragFontSize : effectiveFontSize,
           fontFamily: 'Arial',
+          ...(hasDragSize ? { width: rect.width, height: rect.height } : {}),
         } as TextAnnotation;
         break;
       }
@@ -1356,12 +1372,17 @@ export class Canvas {
         const baseWidth = typeof annotation.width === 'number'
           ? annotation.width
           : Math.max(20, textNode.width());
+        const newWidth = Math.max(20, baseWidth * Math.abs(scaleX));
+
+        // Scale font size proportionally with width
         const baseFontSize = Math.max(1, annotation.fontSize || textNode.fontSize());
+        const newFontSize = Math.max(8, Math.round(baseFontSize * Math.abs(scaleX)));
+
         this.store.updateAnnotation(image.id, annotation.id, {
           x: node.x(),
           y: node.y(),
-          width: Math.max(20, baseWidth * scaleX),
-          fontSize: Math.max(8, baseFontSize * scaleY),
+          width: newWidth,
+          fontSize: newFontSize,
         });
       }
     };
@@ -1912,6 +1933,8 @@ export class Canvas {
           fill: annotation.color,
           opacity: annotation.opacity,
           width: annotation.width,
+          wrap: 'none',
+          ellipsis: false,
           padding: 4,
           draggable: isSelected,
         });
