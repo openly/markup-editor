@@ -336,7 +336,7 @@ export class Canvas {
       this.previewShape = group;
     } else if (tool === 'caption') {
       const rect = this.getRectFromPoints(this.startPoint, point);
-      const barH = Math.min(30, rect.height * 0.25);
+      const barH = 40;
       const group = new Konva.Group();
       // Frame border
       group.add(new Konva.Rect({
@@ -669,6 +669,10 @@ export class Canvas {
 
       case 'caption': {
         const rect = this.getRectFromPoints(this.startPoint, point);
+        const maxCaptionW = 300 / state.scale;
+        const maxCaptionH = 200 / state.scale;
+        rect.width = Math.min(rect.width, maxCaptionW);
+        rect.height = Math.min(rect.height, maxCaptionH);
         if (rect.width > Canvas.SHAPE_MIN_SIZE && rect.height > Canvas.SHAPE_MIN_SIZE) {
           const effectiveFontSize = Math.round(state.fontSize / state.scale);
           annotation = {
@@ -1675,7 +1679,7 @@ export class Canvas {
 
         if (isSelected) {
           // Three draggable handles — only visible when selected
-          const handleRadius = 10;
+          const handleRadius = 18;
           const makeHandle = (hx: number, hy: number) => {
             return new Konva.Circle({
               x: hx,
@@ -1761,7 +1765,7 @@ export class Canvas {
       }
 
       case 'caption': {
-        const barH = Math.min(30, annotation.height * 0.25);
+        const barH = 40;
         const padding = 6;
         const availW = annotation.width - padding * 2;
 
