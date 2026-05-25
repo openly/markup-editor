@@ -686,7 +686,7 @@ export class Canvas {
             y: rect.y,
             width: rect.width,
             height: rect.height,
-            text: 'Your text here',
+            text: 'Your text hereeeeee',
             fontSize: effectiveFontSize,
             fontFamily: 'Arial',
             strokeWidth: state.strokeWidth,
