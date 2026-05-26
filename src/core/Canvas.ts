@@ -336,7 +336,7 @@ export class Canvas {
       this.previewShape = group;
     } else if (tool === 'caption') {
       const rect = this.getRectFromPoints(this.startPoint, point);
-      const barH = 40;
+      const barH = Math.max(50, rect.height * 0.25);
       const group = new Konva.Group();
       // Frame border
       group.add(new Konva.Rect({
@@ -1765,7 +1765,7 @@ export class Canvas {
       }
 
       case 'caption': {
-        const barH = 40;
+        const barH = Math.max(50, annotation.height * 0.25);
         const padding = 6;
         const availW = annotation.width - padding * 2;
 
