@@ -23,6 +23,8 @@ import { uid } from '../utils/uid';
 export class Canvas {
   private static readonly SHAPE_MIN_SIZE = 5;
   private static readonly LINE_MIN_LENGTH = 10;
+  private static readonly HANDLE_BASE_RADIUS = 18;
+  private static readonly HANDLE_SCALE_FACTOR = 0.015;
   private static readonly CROP_STROKE = '#0ea5e9';
 
   private container: HTMLElement;
@@ -1284,6 +1286,11 @@ export class Canvas {
     this.annotationLayer.batchDraw();
   }
 
+  private getHandleRadius(): number {
+    const imgHeight = this.imageElement?.height ?? 0;
+    return Math.max(Canvas.HANDLE_BASE_RADIUS, imgHeight * Canvas.HANDLE_SCALE_FACTOR);
+  }
+
   private createShape(annotation: Annotation): Konva.Shape | Konva.Group | null {
     const image = this.store.getCurrentImage();
     if (!image) return null;
@@ -1473,7 +1480,7 @@ export class Canvas {
         group.add(arrow);
 
         if (isSelected) {
-          const handleRadius = 18;
+          const handleRadius = this.getHandleRadius();
           const makeHandle = (cx: number, cy: number, isStart: boolean) => {
             const hGroup = new Konva.Group({ x: cx, y: cy, draggable: true });
             hGroup.add(new Konva.Circle({
@@ -1520,7 +1527,7 @@ export class Canvas {
         lineGroup.add(line);
 
         if (isSelected) {
-          const handleRadius = 18;
+          const handleRadius = this.getHandleRadius();
           const makeHandle = (cx: number, cy: number, isStart: boolean) => {
             const hGroup = new Konva.Group({ x: cx, y: cy, draggable: true });
             hGroup.add(new Konva.Circle({
@@ -1605,7 +1612,7 @@ export class Canvas {
         group.add(cap2);
 
         if (isSelected) {
-          const handleRadius = 18;
+          const handleRadius = this.getHandleRadius();
 
           const makeHandle = (cx: number, cy: number, isStart: boolean) => {
             const hGroup = new Konva.Group({ x: cx, y: cy, draggable: true });
@@ -1679,7 +1686,7 @@ export class Canvas {
 
         if (isSelected) {
           // Three draggable handles — only visible when selected
-          const handleRadius = 18;
+          const handleRadius = this.getHandleRadius();
           const makeHandle = (hx: number, hy: number) => {
             return new Konva.Circle({
               x: hx,
