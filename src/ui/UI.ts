@@ -461,6 +461,7 @@ export class UI {
 
       const item = document.createElement('button');
       item.className = 'me-kebab-item';
+      item.dataset.toolId = id;
 
       if (tool) {
         if (id === currentTool) item.classList.add('active');
@@ -522,6 +523,7 @@ export class UI {
 
       const item = document.createElement('button');
       item.className = 'me-kebab-item';
+      item.dataset.toolId = tool.id;
       if (tool.id === currentTool) item.classList.add('active');
 
       const iconWrapper = document.createElement('span');
@@ -1294,6 +1296,13 @@ export class UI {
       const activeBtn = this.toolButtons.get(state.currentTool);
       const activeIsHidden = activeBtn?.style.display === 'none';
       this.kebabBtn.classList.toggle('active', activeIsHidden);
+    }
+    // Update active state in open kebab dropdown
+    if (this.kebabDropdown) {
+      this.kebabDropdown.querySelectorAll('.me-kebab-item').forEach((item) => {
+        const el = item as HTMLElement;
+        el.classList.toggle('active', el.dataset.toolId === state.currentTool);
+      });
     }
   }
 

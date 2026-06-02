@@ -21,6 +21,7 @@ import type {
 import { uid } from '../utils/uid';
 
 export class Canvas {
+  private static readonly STROKE_REFERENCE_SIZE = 1000;
   private static readonly SHAPE_MIN_SIZE = 5;
   private static readonly LINE_MIN_LENGTH = 10;
   private static readonly HANDLE_BASE_RADIUS = 18;
@@ -64,6 +65,14 @@ export class Canvas {
 
   // Shape references
   private shapeRefs: Map<string, Konva.Shape | Konva.Group> = new Map();
+
+  private getScaledStrokeWidth(): number {
+    const sw = this.store.getState().strokeWidth;
+    if (!this.imageElement) return sw;
+    const maxDim = Math.max(this.imageElement.width, this.imageElement.height);
+    if (maxDim <= Canvas.STROKE_REFERENCE_SIZE) return sw;
+    return Math.round(sw * (maxDim / Canvas.STROKE_REFERENCE_SIZE));
+  }
 
   constructor(container: HTMLElement, store: Store) {
     this.container = container;
@@ -298,7 +307,7 @@ export class Canvas {
       this.previewShape = new Konva.Line({
         points: this.currentPoints,
         stroke: state.color,
-        strokeWidth: tool === 'highlight' ? state.strokeWidth * 4 : state.strokeWidth,
+        strokeWidth: tool === 'highlight' ? this.getScaledStrokeWidth() * 4 : this.getScaledStrokeWidth(),
         opacity: tool === 'highlight' ? 0.4 : 1,
         tension: 0.5,
         lineCap: 'round',
@@ -316,7 +325,7 @@ export class Canvas {
         width: rect.width,
         height: rect.height,
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         cornerRadius: cornerR,
         dash: [5, 5],
         fill: state.color,
@@ -330,7 +339,7 @@ export class Canvas {
           rect.x + rect.width * 0.5, rect.y + rect.height,
         ],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         closed: true,
         fill: state.color,
         opacity: 0.7,
@@ -347,7 +356,7 @@ export class Canvas {
         width: rect.width,
         height: rect.height,
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
       }));
       // Caption bar
@@ -365,7 +374,7 @@ export class Canvas {
       this.previewShape = new Konva.Line({
         points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
         lineCap: 'round',
       });
@@ -388,7 +397,7 @@ export class Canvas {
         width: rect.width,
         height: rect.height,
         stroke: tool === 'blur' ? '#666' : state.color,
-        strokeWidth: tool === 'blur' ? 2 : state.strokeWidth,
+        strokeWidth: tool === 'blur' ? 2 : this.getScaledStrokeWidth(),
         dash: [5, 5],
         fill: tool === 'blur' ? 'rgba(0,0,0,0.2)' : undefined,
       });
@@ -401,24 +410,24 @@ export class Canvas {
         radiusX: Math.abs(width) / 2,
         radiusY: Math.abs(height) / 2,
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
       });
     } else if (tool === 'arrow') {
       this.previewShape = new Konva.Arrow({
         points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         fill: state.color,
-        pointerLength: state.strokeWidth * 6 + 4,
-        pointerWidth: state.strokeWidth * 5 + 4,
+        pointerLength: this.getScaledStrokeWidth() * 6 + 4,
+        pointerWidth: this.getScaledStrokeWidth() * 5 + 4,
         dash: [5, 5],
       });
     } else if (tool === 'line') {
       this.previewShape = new Konva.Line({
         points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
       });
     } else if (tool === 'measure') {
@@ -429,7 +438,7 @@ export class Canvas {
       group.add(new Konva.Line({
         points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
       }));
       // End caps
@@ -441,7 +450,7 @@ export class Canvas {
           this.startPoint.y + Math.cos(angle) * capLen,
         ],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
       }));
       group.add(new Konva.Line({
         points: [
@@ -451,7 +460,7 @@ export class Canvas {
           point.y + Math.cos(angle) * capLen,
         ],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
       }));
       this.previewShape = group;
     } else if (tool === 'crop') {
@@ -509,7 +518,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: this.currentPoints,
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as PenAnnotation;
         }
         break;
@@ -524,7 +533,7 @@ export class Canvas {
             color: state.color,
             opacity: 0.4,
             points: this.currentPoints,
-            strokeWidth: state.strokeWidth * 4,
+            strokeWidth: this.getScaledStrokeWidth() * 4,
           } as HighlightAnnotation;
         }
         break;
@@ -543,7 +552,7 @@ export class Canvas {
             y: rect.y,
             width: rect.width,
             height: rect.height,
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as RectAnnotation;
         }
         break;
@@ -564,7 +573,7 @@ export class Canvas {
             y: (this.startPoint.y + point.y) / 2,
             radiusX: Math.abs(width) / 2,
             radiusY: Math.abs(height) / 2,
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as EllipseAnnotation;
         }
         break;
@@ -581,7 +590,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as ArrowAnnotation;
         }
         break;
@@ -598,7 +607,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as LineAnnotation;
         }
         break;
@@ -615,7 +624,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as MeasureAnnotation;
         }
         break;
@@ -663,7 +672,7 @@ export class Canvas {
             text: 'Your text here',
             fontSize: effectiveFontSize,
             fontFamily: 'Arial',
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as CalloutAnnotation;
         }
         break;
@@ -691,7 +700,7 @@ export class Canvas {
             text: 'Your text here',
             fontSize: effectiveFontSize,
             fontFamily: 'Arial',
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as CaptionAnnotation;
         }
         break;
@@ -711,7 +720,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: [this.startPoint.x, this.startPoint.y, midX, midY, point.x, point.y],
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as CurveAnnotation;
         }
         break;
