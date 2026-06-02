@@ -302,8 +302,10 @@ export class Canvas {
     const point = this.getPointerPosition();
     if (!point) return;
 
-    // Clear previous preview
-    this.clearPreviewShape();
+    // Clear previous preview (skip for text to avoid flickering — reused below)
+    if (tool !== 'text') {
+      this.clearPreviewShape();
+    }
 
     if (tool === 'pen' || tool === 'highlight') {
       this.currentPoints.push(point.x, point.y);
@@ -382,15 +384,26 @@ export class Canvas {
         lineCap: 'round',
       });
     } else if (tool === 'text') {
-      const rect = this.getRectFromPoints(this.startPoint, point);
-      this.previewShape = new Konva.Rect({
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-        stroke: state.color,
-        strokeWidth: 1,
-        dash: [5, 5],
+      // Show a text preview that scales with drag distance
+      const dist = Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y);
+      const effectiveFontSize = Math.round(state.fontSize / state.scale);
+      const previewFontSize = dist > Canvas.SHAPE_MIN_SIZE
+        ? Math.max(8, Math.round(dist * 0.25))
+        : effectiveFontSize;
+      // Reuse existing preview text node to avoid flickering
+      if (this.previewShape && this.previewShape instanceof Konva.Text) {
+        this.previewShape.fontSize(previewFontSize);
+        this.previewLayer.batchDraw();
+        return;
+      }
+      this.previewShape = new Konva.Text({
+        x: this.startPoint.x,
+        y: this.startPoint.y,
+        text: 'Your text here',
+        fontSize: previewFontSize,
+        fontFamily: 'Arial',
+        fill: state.color,
+        opacity: 0.8,
       });
     } else if (tool === 'rectangle' || tool === 'blur') {
       const rect = this.getRectFromPoints(this.startPoint, point);
@@ -634,12 +647,12 @@ export class Canvas {
       }
 
       case 'text': {
-        const rect = this.getRectFromPoints(this.startPoint, point);
         const effectiveFontSize = Math.round(state.fontSize / state.scale);
-        // If user dragged a region, use it; otherwise fall back to click-to-create
-        const hasDragSize = rect.width > Canvas.SHAPE_MIN_SIZE && rect.height > Canvas.SHAPE_MIN_SIZE;
-        // Scale font size to fit the dragged height (with padding)
-        const dragFontSize = Math.max(8, Math.round(rect.height * 0.6));
+        const dist = Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y);
+        // If user dragged, scale font size based on drag distance
+        const fontSize = dist > Canvas.SHAPE_MIN_SIZE
+          ? Math.max(8, Math.round(dist * 0.25))
+          : effectiveFontSize;
         annotation = {
           id: uid(),
           type: 'text',
@@ -647,12 +660,11 @@ export class Canvas {
           createdAt: Date.now(),
           color: state.color,
           opacity: 1,
-          x: hasDragSize ? rect.x : this.startPoint.x,
-          y: hasDragSize ? rect.y : this.startPoint.y,
-          text: 'Text',
-          fontSize: hasDragSize ? dragFontSize : effectiveFontSize,
+          x: this.startPoint.x,
+          y: this.startPoint.y,
+          text: 'Your text here',
+          fontSize,
           fontFamily: 'Arial',
-          ...(hasDragSize ? { width: rect.width, height: rect.height } : {}),
         } as TextAnnotation;
         break;
       }
@@ -1397,20 +1409,14 @@ export class Canvas {
           radiusY: Math.max(5, ellipse.radiusY() * scaleY),
         });
       } else if (annotation.type === 'text') {
-        const textNode = node as Konva.Text;
-        const baseWidth = typeof annotation.width === 'number'
-          ? annotation.width
-          : Math.max(20, textNode.width());
-        const newWidth = Math.max(20, baseWidth * Math.abs(scaleX));
-
-        // Scale font size proportionally with width
-        const baseFontSize = Math.max(1, annotation.fontSize || textNode.fontSize());
-        const newFontSize = Math.max(8, Math.round(baseFontSize * Math.abs(scaleX)));
+        // Scale font size proportionally — no fixed width so text reflows naturally
+        const baseFontSize = Math.max(1, annotation.fontSize || (node as Konva.Text).fontSize());
+        const scale = Math.max(Math.abs(scaleX), Math.abs(scaleY));
+        const newFontSize = Math.max(8, Math.round(baseFontSize * scale));
 
         this.store.updateAnnotation(image.id, annotation.id, {
           x: node.x(),
           y: node.y(),
-          width: newWidth,
           fontSize: newFontSize,
         });
       }
@@ -1961,9 +1967,7 @@ export class Canvas {
           fontFamily: annotation.fontFamily,
           fill: annotation.color,
           opacity: annotation.opacity,
-          width: annotation.width,
           wrap: 'none',
-          ellipsis: false,
           padding: 4,
           draggable: isSelected,
         });
