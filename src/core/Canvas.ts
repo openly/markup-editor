@@ -263,8 +263,11 @@ export class Canvas {
     const tool = state.currentTool as ToolType;
 
     if (tool === 'select') {
-      // Enable stage dragging
-      this.stage.draggable(true);
+      // Only enable stage dragging when clicking on empty area or image, not on annotations
+      const target = _e.target;
+      const isAnnotation = target !== this.stage && target !== this.imageNode &&
+        target.getLayer() === this.annotationLayer;
+      this.stage.draggable(!isAnnotation);
       return;
     }
 
@@ -793,6 +796,8 @@ export class Canvas {
     }
 
     if (!id) {
+      // Disable dragging on previously selected shape
+      this.transformer.nodes().forEach((n: Konva.Node) => n.draggable(false));
       this.transformer.nodes([]);
       this.transformer.visible(false);
       return;
@@ -800,6 +805,7 @@ export class Canvas {
 
     const shape = this.shapeRefs.get(id);
     if (shape) {
+      shape.draggable(true);
       this.transformer.nodes([shape]);
       this.transformer.rotateEnabled(false);
       this.transformer.keepRatio(false);
@@ -1309,6 +1315,9 @@ export class Canvas {
 
     const handleClick = () => {
       if (this.store.getState().currentTool !== 'select') return;
+      // Don't re-select if already selected (avoids re-render that destroys handles mid-drag)
+      if (annotation.id === this.store.getState().selectedId) return;
+      this.skipNextDeselect = true;
       this.store.selectAnnotation(annotation.id);
     };
 
@@ -1426,7 +1435,7 @@ export class Canvas {
           hitStrokeWidth: Math.max(annotation.strokeWidth, 15),
           draggable: isSelected,
         });
-        line.on('click tap', handleClick);
+        line.on('mousedown touchstart', handleClick);
         line.on('dragmove', handleDragMove);
         line.on('dragend', handleDragEnd);
         return line;
@@ -1444,7 +1453,7 @@ export class Canvas {
           opacity: annotation.opacity,
           draggable: isSelected,
         });
-        rect.on('click tap', handleClick);
+        rect.on('mousedown touchstart', handleClick);
         rect.on('dragmove', handleDragMove);
         rect.on('dragend', handleDragEnd);
         rect.on('transformend', handleTransformEnd);
@@ -1463,7 +1472,7 @@ export class Canvas {
           opacity: annotation.opacity,
           draggable: isSelected,
         });
-        ellipse.on('click tap', handleClick);
+        ellipse.on('mousedown touchstart', handleClick);
         ellipse.on('dragmove', handleDragMove);
         ellipse.on('dragend', handleDragEnd);
         ellipse.on('transformend', handleTransformEnd);
@@ -1517,7 +1526,7 @@ export class Canvas {
           group.add(makeHandle(ax2, ay2, false));
         }
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         return group;
       }
 
@@ -1564,7 +1573,7 @@ export class Canvas {
           lineGroup.add(makeHandle(lx2, ly2, false));
         }
 
-        lineGroup.on('click tap', handleClick);
+        lineGroup.on('mousedown touchstart', handleClick);
         return lineGroup;
       }
 
@@ -1657,7 +1666,7 @@ export class Canvas {
           group.add(makeHandle(mx2, my2, false));
         }
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         return group;
       }
 
@@ -1776,7 +1785,7 @@ export class Canvas {
           group.add(endHandle);
         }
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         return group;
       }
 
@@ -1846,7 +1855,7 @@ export class Canvas {
           verticalAlign: 'middle',
         }));
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         group.on('dblclick dbltap', () => {
           this.store.emit('textEditRequest', annotation);
         });
@@ -1933,7 +1942,7 @@ export class Canvas {
           verticalAlign: 'middle',
         }));
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         group.on('dblclick dbltap', () => {
           this.store.emit('textEditRequest', annotation);
         });
@@ -1958,7 +1967,7 @@ export class Canvas {
           padding: 4,
           draggable: isSelected,
         });
-        text.on('click tap', handleClick);
+        text.on('mousedown touchstart', handleClick);
         text.on('dblclick dbltap', () => {
           this.store.emit('textEditRequest', annotation);
         });
