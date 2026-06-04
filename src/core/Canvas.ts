@@ -1139,7 +1139,7 @@ export class Canvas {
         const sh = stage.height();
         const scaleX = (sw - padding * 2) / imgEl.width;
         const scaleY = (sh - padding * 2) / imgEl.height;
-        const scale = Math.min(scaleX, scaleY, 1);
+        const scale = Math.min(scaleX, scaleY);
         const x = (sw - imgEl.width * scale) / 2;
         const y = (sh - imgEl.height * scale) / 2;
         stage.scale({ x: scale, y: scale });
@@ -1252,7 +1252,7 @@ export class Canvas {
   fitToScreen(): void {
     if (!this.imageElement) return;
 
-    const padding = 40;
+    // const padding = 0;
     const stageWidth = this.stage.width();
     const stageHeight = this.stage.height();
     const origWidth = this.imageElement.width;
@@ -1265,9 +1265,9 @@ export class Canvas {
     const imageWidth = isRotated ? origHeight : origWidth;
     const imageHeight = isRotated ? origWidth : origHeight;
 
-    const scaleX = (stageWidth - padding * 2) / imageWidth;
-    const scaleY = (stageHeight - padding * 2) / imageHeight;
-    const scale = Math.min(scaleX, scaleY, 1);
+    const scaleX = stageWidth / imageWidth;
+    const scaleY = stageHeight / imageHeight;
+    const scale = Math.max(scaleX, scaleY);
 
     // When rotated, the bounding box shifts in layer coords due to offset-based rotation
     const bbLeft = isRotated ? (origWidth - origHeight) / 2 : 0;
