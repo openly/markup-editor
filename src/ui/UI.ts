@@ -61,6 +61,9 @@ export class UI {
   private toolButtons: Map<string, HTMLButtonElement> = new Map();
   private colorDropdown: HTMLElement | null = null;
   private strokeDropdown: HTMLElement | null = null;
+  private toolbarSettings: HTMLElement | null = null;
+  private settingsHomeAnchor: HTMLElement | null = null;
+  private settingsInTopbar = false;
   private overlayDropdown: HTMLElement | null = null;
   private overlaySection: HTMLElement | null = null;
   private kebabBtn: HTMLButtonElement | null = null;
@@ -314,18 +317,28 @@ export class UI {
     divider.className = 'me-toolbar-divider';
     toolbar.appendChild(divider);
 
+    // Settings group (color + stroke) — sits below the tools on wide screens,
+    // and drops to a bottom bar when the toolbar reflows to the top.
+    const settings = document.createElement('div');
+    settings.className = 'me-toolbar-settings';
+
     // Color picker
     const colorPicker = this.createColorPicker();
-    toolbar.appendChild(colorPicker);
+    settings.appendChild(colorPicker);
 
     // Stroke width picker
     const strokePicker = this.createStrokePicker();
-    toolbar.appendChild(strokePicker);
+    settings.appendChild(strokePicker);
+
+    toolbar.appendChild(settings);
+    this.toolbarSettings = settings;
 
     // Divider before history actions
     const divider2 = document.createElement('div');
     divider2.className = 'me-toolbar-divider';
     toolbar.appendChild(divider2);
+    // Anchor used to restore the settings group to its toolbar spot on wide screens
+    this.settingsHomeAnchor = divider2;
 
 
     // History toggle button
@@ -1079,7 +1092,10 @@ export class UI {
   }
 
   private positionDropdownFixed(trigger: HTMLElement, dropdown: HTMLElement): void {
-    if (!this.isToolbarHorizontal()) return;
+    // In the merged layout the pickers live in the top bar, so their dropdowns
+    // must be positioned (opening downward) rather than using the default
+    // open-to-the-right styling meant for the vertical toolbar.
+    if (!this.isToolbarHorizontal() && !this.isMergedLayout()) return;
     const rect = trigger.getBoundingClientRect();
     dropdown.style.position = 'fixed';
     dropdown.style.left = `${rect.left}px`;
@@ -1121,13 +1137,27 @@ export class UI {
   }
 
   private updateTopbarOverflow(): void {
-    const topbarWidth = this.topBar.clientWidth;
-    // Left section ~120px, right section ~40px, padding ~24px, kebab btn ~32px
-    const reservedWidth = 220;
-    const availableWidth = topbarWidth - reservedWidth;
-    const itemSize = 34; // approximate width per center item
+    // Relocate the color/stroke settings between toolbar and top bar first
+    this.updateSettingsPlacement();
 
-    const maxVisible = Math.max(2, Math.floor(availableWidth / itemSize));
+    const topbarWidth = this.topBar.clientWidth;
+
+    // Measure the fixed parts that always stay on the row so we know how much
+    // room is left for the (overflowable) center items. This keeps everything
+    // on a single row — extra items fold into the kebab instead of wrapping.
+    let sectionsWidth = 0;
+    this.topBar.querySelectorAll('.me-topbar-section').forEach((s) => {
+      sectionsWidth += (s as HTMLElement).offsetWidth;
+    });
+    const kebabWidth = this.topbarKebabBtn ? 40 : 0;
+    const settingsWidth =
+      this.settingsInTopbar && this.toolbarSettings ? this.toolbarSettings.offsetWidth : 0;
+    const reservedWidth = sectionsWidth + kebabWidth + settingsWidth + 24;
+
+    const availableWidth = topbarWidth - reservedWidth;
+    const itemSize = 40; // conservative width per center item (favors single row)
+
+    const maxVisible = Math.max(1, Math.floor(availableWidth / itemSize));
 
     let visibleCount = 0;
     let hiddenCount = 0;
@@ -1158,8 +1188,133 @@ export class UI {
     });
 
     if (this.topbarKebabBtn) {
-      this.topbarKebabBtn.style.display = hiddenCount > 0 ? 'flex' : 'none';
+      // Always show the kebab when the toolbar has folded in (tools live here).
+      this.topbarKebabBtn.style.display =
+        hiddenCount > 0 || this.isMergedLayout() ? 'flex' : 'none';
     }
+  }
+
+  /** True when the layout has collapsed the toolbar into the top bar (narrow screens). */
+  private isMergedLayout(): boolean {
+    return !!this.root && this.root.clientWidth <= 540;
+  }
+
+  /**
+   * Move the color/stroke settings group into the top bar (right after the
+   * kebab) when responsive, and back into the toolbar when wide.
+   */
+  private updateSettingsPlacement(): void {
+    const settings = this.toolbarSettings;
+    if (!settings) return;
+    const merged = this.isMergedLayout();
+
+    if (merged && !this.settingsInTopbar) {
+      if (this.topbarKebabBtn) {
+        this.topbarKebabBtn.after(settings);
+      } else if (this.topBar) {
+        this.topBar.appendChild(settings);
+      }
+      this.settingsInTopbar = true;
+    } else if (!merged && this.settingsInTopbar) {
+      if (this.toolbar && this.settingsHomeAnchor) {
+        this.toolbar.insertBefore(settings, this.settingsHomeAnchor);
+      } else if (this.toolbar) {
+        this.toolbar.appendChild(settings);
+      }
+      this.settingsInTopbar = false;
+    }
+  }
+
+  /** Append the drawing tools (+ history) to the top-bar kebab dropdown. */
+  private appendToolsToTopbarMenu(dropdown: HTMLElement): void {
+    const currentTool = this.store.getState().currentTool;
+    const enabledTools = this.options.tools || TOOLS.map((t) => t.id);
+
+    // Separator between the top-bar actions and the tools
+    if (dropdown.children.length > 0) {
+      const sep = document.createElement('div');
+      sep.className = 'me-kebab-separator';
+      dropdown.appendChild(sep);
+    }
+
+    const closeMenu = () => {
+      dropdown.remove();
+      this.topbarKebabDropdown = null;
+    };
+
+    TOOLS.forEach((tool) => {
+      if (!enabledTools.includes(tool.id)) return;
+
+      const item = document.createElement('button');
+      item.className = 'me-kebab-item';
+      item.dataset.toolId = tool.id;
+      if (tool.id === currentTool) item.classList.add('active');
+
+      const iconEl = createIcon(tool.icon);
+      iconEl.classList.add('me-kebab-item-icon');
+
+      const label = document.createElement('span');
+      label.className = 'me-kebab-item-label';
+      label.textContent = tool.name;
+
+      const shortcut = document.createElement('span');
+      shortcut.className = 'me-kebab-item-shortcut';
+      shortcut.textContent = tool.shortcut;
+
+      item.appendChild(iconEl);
+      item.appendChild(label);
+      item.appendChild(shortcut);
+      item.onclick = () => {
+        this.store.setTool(tool.id);
+        closeMenu();
+      };
+      dropdown.appendChild(item);
+    });
+
+    // Custom tools
+    this.customTools.forEach((tool) => {
+      const item = document.createElement('button');
+      item.className = 'me-kebab-item';
+      item.dataset.toolId = tool.id;
+      if (tool.id === currentTool) item.classList.add('active');
+
+      const iconWrapper = document.createElement('span');
+      iconWrapper.className = 'me-kebab-item-icon';
+      if (typeof tool.icon === 'string') {
+        iconWrapper.innerHTML = tool.icon;
+      } else {
+        iconWrapper.appendChild(tool.icon.cloneNode(true));
+      }
+
+      const label = document.createElement('span');
+      label.className = 'me-kebab-item-label';
+      label.textContent = tool.name || tool.id;
+
+      item.appendChild(iconWrapper);
+      item.appendChild(label);
+      item.onclick = () => {
+        this.store.setTool(tool.id);
+        closeMenu();
+      };
+      dropdown.appendChild(item);
+    });
+
+    // History toggle (the toolbar's history button is hidden in this layout)
+    const historyItem = document.createElement('button');
+    historyItem.className = 'me-kebab-item';
+    const hIcon = createIcon('panelRight');
+    hIcon.classList.add('me-kebab-item-icon');
+    const hLabel = document.createElement('span');
+    hLabel.className = 'me-kebab-item-label';
+    hLabel.textContent = 'History';
+    historyItem.appendChild(hIcon);
+    historyItem.appendChild(hLabel);
+    historyItem.onclick = () => {
+      const hw = this.root.querySelector('.me-history-wrapper');
+      if (hw) hw.classList.toggle('collapsed');
+      closeMenu();
+    };
+    dropdown.appendChild(historyItem);
   }
 
   private toggleTopbarKebabMenu(): void {
@@ -1206,6 +1361,12 @@ export class UI {
 
       dropdown.appendChild(menuItem);
     });
+
+    // On narrow screens the standalone toolbar is hidden, so the drawing
+    // tools fold into this same menu — one top bar, one overflow menu.
+    if (this.isMergedLayout()) {
+      this.appendToolsToTopbarMenu(dropdown);
+    }
 
     if (this.topbarKebabBtn) {
       this.topBar.appendChild(dropdown);
@@ -1302,6 +1463,15 @@ export class UI {
       this.kebabDropdown.querySelectorAll('.me-kebab-item').forEach((item) => {
         const el = item as HTMLElement;
         el.classList.toggle('active', el.dataset.toolId === state.currentTool);
+      });
+    }
+    // Same for the top-bar kebab (holds the tools in the merged layout)
+    if (this.topbarKebabDropdown) {
+      this.topbarKebabDropdown.querySelectorAll('.me-kebab-item').forEach((item) => {
+        const el = item as HTMLElement;
+        if (el.dataset.toolId) {
+          el.classList.toggle('active', el.dataset.toolId === state.currentTool);
+        }
       });
     }
   }
