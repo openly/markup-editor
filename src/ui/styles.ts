@@ -16,7 +16,7 @@ export const styles = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
+  height: 40px;
   // padding: 0 12px;
   flex-shrink: 0;
   background: var(--me-surface);
@@ -124,6 +124,9 @@ export const styles = `
   display: flex;
   flex: 1;
   overflow: hidden;
+  /* The canvas hugs the image aspect ratio, so the area freed below it should
+     match the canvas colour (no mismatched band). */
+  background: var(--me-canvas-bg);
 }
 
 /* Toolbar */
@@ -1077,7 +1080,7 @@ export const styles = `
 /* ----- Medium: container < 768px ----- */
 @container markup-editor (max-width: 768px) {
   .me-topbar {
-    height: auto;
+    // height: auto;
     min-height: 40px;
     padding: 4px 8px;
     flex-wrap: wrap;
@@ -1150,7 +1153,7 @@ export const styles = `
 /* ----- Small: container < 540px ----- */
 @container markup-editor (max-width: 540px) {
   .me-topbar {
-    min-height: 36px;
+    // min-height: 36px;
     padding: 4px 6px;
     gap: 2px;
     flex-wrap: nowrap;
@@ -1449,7 +1452,7 @@ export const styles = `
 @supports not (container-type: inline-size) {
   @media (max-width: 768px) {
     .me-topbar {
-      height: auto;
+      // height: auto;
       min-height: 40px;
       padding: 4px 8px;
       flex-wrap: wrap;

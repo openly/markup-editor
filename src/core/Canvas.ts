@@ -27,9 +27,14 @@ export class Canvas {
   private static readonly HANDLE_BASE_RADIUS = 18;
   private static readonly HANDLE_SCALE_FACTOR = 0.015;
   private static readonly CROP_STROKE = '#0ea5e9';
+  private static readonly MIN_MEMAIN_HEIGHT = 160;
 
   private container: HTMLElement;
   private store: Store;
+  // Auto-height: shrink the host container to fit the image aspect ratio.
+  private autoHeight = false;
+  private hostContainer: HTMLElement | null = null;
+  private hostMaxHeight = 0;
   private stage: Konva.Stage;
   private imageLayer: Konva.Layer;
   private gridLayer: Konva.Layer;
@@ -63,6 +68,10 @@ export class Canvas {
   private previousSelectedId: string | null = null;
   private skipNextDeselect = false;
 
+  // When the container is sized to the image (responsive), the image should
+  // fill it edge-to-edge with no padding/letterboxing.
+  private fitFill = false;
+
   // Shape references
   private shapeRefs: Map<string, Konva.Shape | Konva.Group> = new Map();
 
@@ -74,9 +83,29 @@ export class Canvas {
     return Math.round(sw * (maxDim / Canvas.STROKE_REFERENCE_SIZE));
   }
 
-  constructor(container: HTMLElement, store: Store) {
+  constructor(container: HTMLElement, store: Store, autoHeight = false) {
     this.container = container;
     this.store = store;
+    this.autoHeight = autoHeight;
+
+    if (autoHeight) {
+      // The host is the element the editor was mounted into (parent of the
+      // .markup-editor root). Capture its initial height as the cap we never
+      // grow past — we only shrink to remove wasted space around the image.
+      const root = this.container.closest('.markup-editor') as HTMLElement | null;
+      this.hostContainer = (root?.parentElement as HTMLElement) || null;
+      if (this.hostContainer) {
+        // Persist the original (unshrunk) height so a re-init while the host is
+        // already shrunk doesn't lock the cap to the reduced height.
+        const stored = this.hostContainer.dataset.meMaxHeight;
+        if (stored) {
+          this.hostMaxHeight = parseFloat(stored);
+        } else {
+          this.hostMaxHeight = this.hostContainer.clientHeight;
+          this.hostContainer.dataset.meMaxHeight = String(this.hostMaxHeight);
+        }
+      }
+    }
 
     // Create stage
     this.stage = new Konva.Stage({
@@ -109,8 +138,12 @@ export class Canvas {
 
     // Handle resize
     const resizeObserver = new ResizeObserver(() => {
+      // Adjust container height to the image on responsive widths first so the
+      // stage picks up the new height, then re-fit the image into it.
+      this.updateCanvasHeight();
       this.stage.width(this.container.offsetWidth);
       this.stage.height(this.container.offsetHeight);
+      this.fitToScreen();
     });
     resizeObserver.observe(this.container);
 
@@ -901,6 +934,10 @@ export class Canvas {
         this.imageLayer.moveToBottom();
         this.imageLayer.batchDraw();
 
+        // Size the container to the image on responsive widths, then fit.
+        this.updateCanvasHeight();
+        this.stage.width(this.container.offsetWidth);
+        this.stage.height(this.container.offsetHeight);
         // Fit to screen (accounts for rotation)
         this.fitToScreen();
         this.renderGrid();
@@ -944,6 +981,10 @@ export class Canvas {
       this.imageLayer.batchDraw();
       this.annotationLayer.batchDraw();
       this.previewLayer.batchDraw();
+      // Rotation swaps aspect ratio — re-sync container height before fitting.
+      this.updateCanvasHeight();
+      this.stage.width(this.container.offsetWidth);
+      this.stage.height(this.container.offsetHeight);
       this.fitToScreen();
     }
   }
@@ -1249,10 +1290,87 @@ export class Canvas {
     this.annotationLayer.batchDraw();
   }
 
+  /** Intrinsic content height of a flex element (ignores stretch to siblings). */
+  private measureContentHeight(el: HTMLElement): number {
+    const cs = getComputedStyle(el);
+    let h = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const gap = parseFloat(cs.rowGap || cs.gap || '0') || 0;
+    let visible = 0;
+    for (const child of Array.from(el.children)) {
+      const ch = (child as HTMLElement).offsetHeight;
+      if (ch > 0) {
+        h += ch;
+        visible++;
+      }
+    }
+    if (visible > 1) h += gap * (visible - 1);
+    return h;
+  }
+
+  /**
+   * When `autoHeight` is enabled, shrink the host container so its height fits
+   * the current image's aspect ratio (never taller than the initial height).
+   * This removes wasted vertical space around landscape images, especially on
+   * narrow screens. When disabled, the image is simply centered/letterboxed in
+   * whatever space the host provides.
+   */
+  private updateCanvasHeight(): void {
+    if (!this.autoHeight || !this.hostContainer) {
+      this.fitFill = false;
+      return;
+    }
+
+    // Nothing to size to yet.
+    if (!this.imageElement) {
+      this.fitFill = false;
+      return;
+    }
+
+    // Displayed dimensions account for 90/270 rotation swapping w/h.
+    const currentImage = this.store.getCurrentImage();
+    const rotation = currentImage ? currentImage.rotation : 0;
+    const isRotated = rotation === 90 || rotation === 270;
+    const imgW = isRotated ? this.imageElement.height : this.imageElement.width;
+    const imgH = isRotated ? this.imageElement.width : this.imageElement.height;
+    if (!imgW || !imgH) return;
+
+    const meMain = this.container.parentElement; // .me-main (row: toolbar | canvas | panels)
+    const root = this.container.closest('.markup-editor') as HTMLElement | null;
+    if (!meMain || !root) return;
+
+    // Height taken up by full-width chrome above/below .me-main (top bar, notes).
+    const chrome = Math.max(0, root.clientHeight - meMain.clientHeight);
+
+    // Ideal canvas height so the image fills the canvas width exactly.
+    const canvasWidth = this.container.clientWidth;
+    const hugHeight = canvasWidth / (imgW / imgH);
+
+    // .me-main must also fit the (vertical) toolbar without clipping its tools.
+    // The toolbar is a stretched flex item, so its own height tracks .me-main —
+    // measure its intrinsic content height from its children instead.
+    const toolbar = root.querySelector('.me-toolbar') as HTMLElement | null;
+    const toolbarHeight = toolbar ? this.measureContentHeight(toolbar) : 0;
+
+    const idealMeMain = Math.max(hugHeight, toolbarHeight, Canvas.MIN_MEMAIN_HEIGHT);
+    const cap = this.hostMaxHeight || root.clientHeight;
+    const idealHost = Math.min(cap, Math.round(chrome + idealMeMain));
+
+    if (Math.round(this.hostContainer.clientHeight) !== idealHost) {
+      this.hostContainer.style.height = `${idealHost}px`;
+    }
+
+    // Fill the canvas flush (no padding) only when it ends up matching the
+    // image aspect; otherwise the image is letterboxed and centered.
+    const finalMeMain = idealHost - chrome;
+    this.fitFill = Math.abs(finalMeMain - hugHeight) <= 2;
+  }
+
   fitToScreen(): void {
     if (!this.imageElement) return;
 
-    const padding = 10;
+    // When the container is sized to the image, fill it flush with no padding
+    // and allow upscaling so there's no gap between canvas and image.
+    const padding = this.fitFill ? 0 : 10;
     const stageWidth = this.stage.width();
     const stageHeight = this.stage.height();
     const origWidth = this.imageElement.width;
@@ -1267,7 +1385,7 @@ export class Canvas {
 
     const scaleX = (stageWidth - padding * 2) / imageWidth;
     const scaleY = (stageHeight - padding * 2) / imageHeight;
-    const scale = Math.min(scaleX, scaleY, 1);
+    const scale = this.fitFill ? Math.min(scaleX, scaleY) : Math.min(scaleX, scaleY, 1);
 
     // When rotated, the bounding box shifts in layer coords due to offset-based rotation
     const bbLeft = isRotated ? (origWidth - origHeight) / 2 : 0;
