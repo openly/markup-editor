@@ -240,6 +240,13 @@ export interface MarkupEditorOptions {
   showNotesPanel?: boolean;
   withoutThumb?: boolean;
   showTopBar?: boolean;
+  /**
+   * When true, the editor shrinks its host container's height to fit the
+   * current image's aspect ratio (never taller than the container's initial
+   * height). Removes wasted vertical space around landscape images on narrow
+   * screens. Default false.
+   */
+  autoHeight?: boolean;
   toolbarPosition?: 'left' | 'right' | 'top' | 'bottom';
   locale?: string;
   plugins?: MarkupPlugin[];

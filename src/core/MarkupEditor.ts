@@ -426,7 +426,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
       this.ui.showLoading();
 
       try {
-        this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store);
+        this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store, this.options.autoHeight ?? false);
         await this.canvas.loadImage(url);
         this.canvas.renderAnnotations();
         this.emit('imageLoad', image);
@@ -444,7 +444,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
       this.ui.showLoading();
 
       const firstImage = images[0];
-      this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store);
+      this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store, this.options.autoHeight ?? false);
       this.canvas
         .loadImage(firstImage.url)
         .then(() => {

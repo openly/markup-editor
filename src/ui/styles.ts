@@ -16,7 +16,7 @@ export const styles = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
+  height: 40px;
   // padding: 0 12px;
   flex-shrink: 0;
   background: var(--me-surface);
@@ -124,6 +124,9 @@ export const styles = `
   display: flex;
   flex: 1;
   overflow: hidden;
+  /* The canvas hugs the image aspect ratio, so the area freed below it should
+     match the canvas colour (no mismatched band). */
+  background: var(--me-canvas-bg);
 }
 
 /* Toolbar */
@@ -157,6 +160,23 @@ export const styles = `
   width: 1px;
   height: 24px;
   margin: 0 8px;
+}
+
+/* Settings group (color + stroke pickers) */
+.me-toolbar-settings {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* When responsive, the settings group is moved into the top bar (after the
+   kebab) and laid out as an inline row. */
+.me-topbar .me-toolbar-settings {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
 }
 
 /* Canvas area */
@@ -1012,6 +1032,12 @@ export const styles = `
   background: var(--me-surface-hover);
 }
 
+.me-kebab-separator {
+  height: 1px;
+  background: var(--me-border);
+  margin: 4px 6px;
+}
+
 .me-kebab-item.active {
   background: var(--me-primary);
   color: white;
@@ -1054,7 +1080,7 @@ export const styles = `
 /* ----- Medium: container < 768px ----- */
 @container markup-editor (max-width: 768px) {
   .me-topbar {
-    height: auto;
+    // height: auto;
     min-height: 40px;
     padding: 4px 8px;
     flex-wrap: wrap;
@@ -1127,23 +1153,26 @@ export const styles = `
 /* ----- Small: container < 540px ----- */
 @container markup-editor (max-width: 540px) {
   .me-topbar {
-    min-height: 36px;
+    // min-height: 36px;
     padding: 4px 6px;
     gap: 2px;
+    flex-wrap: nowrap;
   }
 
   .me-topbar-section {
     gap: 2px;
+    flex-shrink: 0;
   }
 
   .me-topbar-center {
     order: 0;
     width: auto;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 2px;
     padding-top: 0;
     flex: 1;
     min-width: 0;
+    flex-wrap: nowrap;
   }
 
   .me-image-name {
@@ -1199,6 +1228,21 @@ export const styles = `
     width: 34px;
     height: 34px;
     flex-shrink: 0;
+  }
+
+  /* ---- Reflow: tools + color/stroke fold into the single top bar ---- */
+  /* The toolbar's own controls move into the top bar (tools -> kebab menu,
+     color/stroke -> after the kebab), so the standalone toolbar collapses. */
+  .me-toolbar {
+    border-right: none;
+    padding: 0;
+    gap: 0;
+  }
+
+  .me-toolbar .me-btn-tool,
+  .me-toolbar .me-kebab-btn,
+  .me-toolbar .me-toolbar-divider {
+    display: none !important;
   }
 
   /* History panel: slide-over drawer on small screens */
@@ -1408,7 +1452,7 @@ export const styles = `
 @supports not (container-type: inline-size) {
   @media (max-width: 768px) {
     .me-topbar {
-      height: auto;
+      // height: auto;
       min-height: 40px;
       padding: 4px 8px;
       flex-wrap: wrap;
@@ -1449,6 +1493,19 @@ export const styles = `
 
     .me-image-name {
       display: none;
+    }
+
+    /* Reflow: tools + color/stroke fold into the single top bar */
+    .me-toolbar {
+      border-right: none;
+      padding: 0;
+      gap: 0;
+    }
+
+    .me-toolbar .me-btn-tool,
+    .me-toolbar .me-kebab-btn,
+    .me-toolbar .me-toolbar-divider {
+      display: none !important;
     }
 
     .me-history-wrapper {
