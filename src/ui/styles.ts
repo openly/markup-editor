@@ -124,6 +124,10 @@ export const styles = `
   display: flex;
   flex: 1;
   overflow: hidden;
+  /* Positioning context so the responsive history drawer (position: absolute)
+     anchors here — inside the editor, below the top bar — instead of escaping
+     to the page ("popping out"). */
+  position: relative;
   /* The canvas hugs the image aspect ratio, so the area freed below it should
      match the canvas colour (no mismatched band). */
   background: var(--me-canvas-bg);
