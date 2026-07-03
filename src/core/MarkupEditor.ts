@@ -156,6 +156,10 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
       this.canvas?.fitToScreen();
     });
 
+    this.store.on('zoomBy', (factor: number) => {
+      this.canvas?.zoomBy(factor);
+    });
+
     this.store.on('textEditRequest', (annotation: Annotation) => {
       this.showTextEditModal(annotation);
     });

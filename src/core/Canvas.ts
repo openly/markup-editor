@@ -1398,6 +1398,33 @@ export class Canvas {
     this.updateTransform();
   }
 
+  /**
+   * Zoom by `factor` (e.g. 1.2 in, 1/1.2 out) around the centre of the visible
+   * canvas, so the image stays centred instead of drifting toward a corner.
+   */
+  zoomBy(factor: number): void {
+    const state = this.store.getState();
+    const oldScale = state.scale;
+    const newScale = Math.max(0.1, Math.min(5, oldScale * factor));
+    if (newScale === oldScale) return;
+
+    // Keep the point at the viewport centre fixed while scaling.
+    const cx = this.stage.width() / 2;
+    const cy = this.stage.height() / 2;
+    const anchor = {
+      x: (cx - state.position.x) / oldScale,
+      y: (cy - state.position.y) / oldScale,
+    };
+    const newPos = {
+      x: cx - anchor.x * newScale,
+      y: cy - anchor.y * newScale,
+    };
+
+    this.store.setScale(newScale);
+    this.store.setPosition(newPos);
+    this.updateTransform();
+  }
+
   renderAnnotations(): void {
     // Clear transformer
     this.transformer.nodes([]);

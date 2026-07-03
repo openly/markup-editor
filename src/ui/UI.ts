@@ -188,11 +188,12 @@ export class UI {
     divider1.style.cssText = 'width:1px;height:24px;background:var(--me-border);margin:0 8px';
     this.topbarCenterItems.push({ el: divider1, label: '', priority: 'secondary', action: () => {}, iconName: undefined });
 
-    // Zoom out
+    // Zoom out (zoom toward the viewport centre so the image doesn't drift)
+    const zoomOut = () => this.store.emit('zoomBy', 1 / 1.2);
     const zoomOutBtn = this.createButton('zoomOut', 'Zoom out');
     zoomOutBtn.classList.add('me-topbar-item');
-    zoomOutBtn.onclick = () => { const s = this.store.getState(); this.store.setScale(s.scale / 1.2); };
-    this.topbarCenterItems.push({ el: zoomOutBtn, label: 'Zoom out', priority: 'primary', action: () => { const s = this.store.getState(); this.store.setScale(s.scale / 1.2); }, iconName: 'zoomOut' });
+    zoomOutBtn.onclick = zoomOut;
+    this.topbarCenterItems.push({ el: zoomOutBtn, label: 'Zoom out', priority: 'primary', action: zoomOut, iconName: 'zoomOut' });
 
     // Zoom text
     const zoomText = document.createElement('span');
@@ -201,11 +202,12 @@ export class UI {
     zoomText.textContent = '100%';
     this.topbarCenterItems.push({ el: zoomText, label: '', priority: 'primary', action: () => {}, iconName: undefined });
 
-    // Zoom in
+    // Zoom in (zoom toward the viewport centre so the image doesn't drift)
+    const zoomIn = () => this.store.emit('zoomBy', 1.2);
     const zoomInBtn = this.createButton('zoomIn', 'Zoom in');
     zoomInBtn.classList.add('me-topbar-item');
-    zoomInBtn.onclick = () => { const s = this.store.getState(); this.store.setScale(s.scale * 1.2); };
-    this.topbarCenterItems.push({ el: zoomInBtn, label: 'Zoom in', priority: 'primary', action: () => { const s = this.store.getState(); this.store.setScale(s.scale * 1.2); }, iconName: 'zoomIn' });
+    zoomInBtn.onclick = zoomIn;
+    this.topbarCenterItems.push({ el: zoomInBtn, label: 'Zoom in', priority: 'primary', action: zoomIn, iconName: 'zoomIn' });
 
     // Fit to screen
     const fitBtn = this.createButton('maximize', 'Fit to screen');
