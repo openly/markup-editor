@@ -672,6 +672,8 @@ export class UI {
         btn.style.background = color;
         btn.onclick = () => {
           this.store.setColor(color);
+          // If an annotation is selected, recolour it too.
+          this.store.updateSelectedAnnotation({ color });
           (swatch.querySelector('.me-color-swatch') as HTMLElement).style.background = color;
           dropdown.remove();
           this.colorDropdown = null;
@@ -685,6 +687,7 @@ export class UI {
       input.value = this.store.getState().color;
       input.onchange = () => {
         this.store.setColor(input.value);
+        this.store.updateSelectedAnnotation({ color: input.value });
         (swatch.querySelector('.me-color-swatch') as HTMLElement).style.background = input.value;
       };
 
