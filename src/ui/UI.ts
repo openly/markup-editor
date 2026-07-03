@@ -74,6 +74,14 @@ export class UI {
   private topbarResizeObserver: ResizeObserver | null = null;
   private topbarCenterItems: { el: HTMLElement; label: string; priority: 'primary' | 'secondary' | 'tertiary'; action: () => void; iconName?: keyof typeof icons }[] = [];
 
+  // Responsive breakpoints are computed from the physical size (CSS width
+  // normalised by browser zoom) so changing zoom doesn't flip the layout.
+  private baselineDpr = typeof window !== 'undefined' ? window.devicePixelRatio || 1 : 1;
+  private breakpointResizeObserver: ResizeObserver | null = null;
+  private static readonly BP_MD = 768;
+  private static readonly BP_SM = 540;
+  private static readonly BP_XS = 360;
+
   constructor(container: HTMLElement, store: Store, options: UIOptions = {}) {
     this.container = container;
     this.store = store;
@@ -88,7 +96,38 @@ export class UI {
 
     this.createLayout();
     this.setupStoreListeners();
+    this.setupResponsive();
     this.setupTopbarOverflow();
+  }
+
+  /**
+   * Effective (physical) width of the editor: CSS width scaled by the browser
+   * zoom factor. Browser zoom changes CSS-px width and devicePixelRatio in
+   * inverse proportion, so this product stays constant across zoom levels and
+   * only changes when the element is genuinely resized.
+   */
+  private effectiveWidth(): number {
+    if (!this.root) return 0;
+    const zoomFactor = (window.devicePixelRatio || 1) / this.baselineDpr;
+    return this.root.clientWidth * zoomFactor;
+  }
+
+  /** Toggle responsive breakpoint classes based on the zoom-invariant width. */
+  private updateBreakpointClasses(): void {
+    if (!this.root) return;
+    const w = this.effectiveWidth();
+    if (w === 0) return; // not laid out yet
+    this.root.classList.toggle('me-bp-md', w <= UI.BP_MD);
+    this.root.classList.toggle('me-bp-sm', w <= UI.BP_SM);
+    this.root.classList.toggle('me-bp-xs', w <= UI.BP_XS);
+  }
+
+  private setupResponsive(): void {
+    this.updateBreakpointClasses();
+    this.breakpointResizeObserver = new ResizeObserver(() => {
+      this.updateBreakpointClasses();
+    });
+    this.breakpointResizeObserver.observe(this.root);
   }
 
   private createLayout(): void {
@@ -1198,7 +1237,7 @@ export class UI {
 
   /** True when the layout has collapsed the toolbar into the top bar (narrow screens). */
   private isMergedLayout(): boolean {
-    return !!this.root && this.root.clientWidth <= 540;
+    return !!this.root && this.effectiveWidth() <= UI.BP_SM;
   }
 
   /**
@@ -1677,6 +1716,7 @@ export class UI {
   destroy(): void {
     this.toolbarResizeObserver?.disconnect();
     this.topbarResizeObserver?.disconnect();
+    this.breakpointResizeObserver?.disconnect();
     this.root.remove();
   }
 }
