@@ -262,6 +262,24 @@ export class Store extends EventEmitter {
     this.emit('selectionChange', id);
   }
 
+  getSelectedAnnotation(): Annotation | null {
+    const id = this.state.selectedId;
+    if (!id) return null;
+    const image = this.getCurrentImage();
+    if (!image) return null;
+    return this.getAnnotations(image.id).find((a) => a.id === id) || null;
+  }
+
+  /** Apply changes to the currently selected annotation, if any. */
+  updateSelectedAnnotation(changes: Partial<Annotation>): boolean {
+    const id = this.state.selectedId;
+    if (!id) return false;
+    const image = this.getCurrentImage();
+    if (!image) return false;
+    this.updateAnnotation(image.id, id, changes);
+    return true;
+  }
+
   clearAnnotations(imageId: string): void {
     this.ensureImageState(imageId);
     this.state.annotationsByImage[imageId] = [];
