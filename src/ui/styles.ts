@@ -1125,6 +1125,12 @@ export const styles = `
     width: 180px;
   }
 
+  /* Keep the collapsed panel closed — this breakpoint's width rule above would
+     otherwise out-specify the base collapse rule and force it open. */
+  .me-history-wrapper.collapsed .me-history-panel {
+    width: 0;
+  }
+
   .me-notes-input {
     height: 44px;
   }
