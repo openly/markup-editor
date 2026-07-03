@@ -1075,14 +1075,14 @@ export const styles = `
   color: rgba(255,255,255,0.7);
 }
 
-/* ===== RESPONSIVE: Container Queries ===== */
-.markup-editor {
-  container-type: inline-size;
-  container-name: markup-editor;
-}
+/* ===== RESPONSIVE =====
+   Breakpoints are driven by JS classes (me-bp-md/sm/xs) on .markup-editor, not
+   CSS container/media queries, so the layout is based on the *physical* size and
+   does NOT flip when the user changes browser zoom (which alters CSS-px width).
+   Rules are nested under each class (native CSS nesting = descendant match). */
 
-/* ----- Medium: container < 768px ----- */
-@container markup-editor (max-width: 768px) {
+/* ----- Medium: effective width <= 768px ----- */
+.markup-editor.me-bp-md {
   .me-topbar {
     // height: auto;
     min-height: 40px;
@@ -1155,7 +1155,7 @@ export const styles = `
 }
 
 /* ----- Small: container < 540px ----- */
-@container markup-editor (max-width: 540px) {
+.markup-editor.me-bp-sm {
   .me-topbar {
     // min-height: 36px;
     padding: 4px 6px;
@@ -1372,7 +1372,7 @@ export const styles = `
 }
 
 /* ----- Extra small: container < 360px ----- */
-@container markup-editor (max-width: 360px) {
+.markup-editor.me-bp-xs {
   .me-topbar {
     padding: 2px 4px;
   }
@@ -1449,97 +1449,6 @@ export const styles = `
 
   .markup-editor {
     font-size: 12px;
-  }
-}
-
-/* ----- Fallback: media queries for when container queries are unsupported ----- */
-@supports not (container-type: inline-size) {
-  @media (max-width: 768px) {
-    .me-topbar {
-      // height: auto;
-      min-height: 40px;
-      padding: 4px 8px;
-      flex-wrap: wrap;
-      gap: 4px;
-    }
-
-    .me-topbar-center {
-      gap: 2px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-
-    .me-image-name {
-      max-width: 120px;
-    }
-
-    .me-btn-icon {
-      width: 32px;
-      height: 32px;
-    }
-
-    .me-btn-tool {
-      width: 36px;
-      height: 36px;
-    }
-
-    .me-history-wrapper .me-history-panel {
-      width: 180px;
-    }
-  }
-
-  @media (max-width: 540px) {
-    .me-topbar-center {
-      order: 3;
-      width: 100%;
-      justify-content: center;
-    }
-
-    .me-image-name {
-      display: none;
-    }
-
-    /* Reflow: tools + color/stroke fold into the single top bar */
-    .me-toolbar {
-      border-right: none;
-      padding: 0;
-      gap: 0;
-    }
-
-    .me-toolbar .me-btn-tool,
-    .me-toolbar .me-kebab-btn,
-    .me-toolbar .me-toolbar-divider {
-      display: none !important;
-    }
-
-    .me-history-wrapper {
-      position: absolute;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 60;
-      border-left: 1px solid var(--me-border);
-      box-shadow: -4px 0 16px rgba(0,0,0,0.15);
-    }
-
-    .me-history-wrapper.collapsed {
-      box-shadow: none;
-      border-left: none;
-    }
-
-    .me-history-wrapper .me-history-panel {
-      width: 200px;
-    }
-
-    .me-modal-textarea {
-      width: 100%;
-      min-width: 200px;
-    }
-
-    .me-url-input {
-      width: 100%;
-      max-width: 280px;
-    }
   }
 }
 `;
