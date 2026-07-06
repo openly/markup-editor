@@ -108,9 +108,10 @@ export class Store extends EventEmitter {
   }
 
   // Image actions
-  setImages(images: ImageData[]): void {
+  setImages(images: ImageData[], initialIndex = 0): void {
     this.state.images = images;
-    this.state.currentImageIndex = 0;
+    this.state.currentImageIndex =
+      initialIndex >= 0 && initialIndex < images.length ? initialIndex : 0;
     this.state.annotationsByImage = {};
     this.state.historyByImage = {};
     this.state.historyIndexByImage = {};

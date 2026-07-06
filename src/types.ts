@@ -235,6 +235,11 @@ export interface MarkupEditorOptions {
   defaultFontSize?: number;
   defaultOverlayOpacity?: number;
   images?: ImageData[];
+  /**
+   * Index of the image to show first when the editor loads. Defaults to 0.
+   * Avoids a flash/race where image 0 loads before navigating elsewhere.
+   */
+  initialImageIndex?: number;
   showToolbar?: boolean;
   showHistoryPanel?: boolean;
   showNotesPanel?: boolean;
