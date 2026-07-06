@@ -95,7 +95,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
 
     // Load initial images
     if (options.images && options.images.length > 0) {
-      this.loadImages(options.images);
+      this.loadImages(options.images, options.initialImageIndex);
     } else {
       this.ui.showEmptyState();
     }
@@ -440,20 +440,20 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     }
   }
 
-  loadImages(images: ImageData[]): void {
-    this.store.setImages(images);
+  loadImages(images: ImageData[], initialIndex = 0): void {
+    this.store.setImages(images, initialIndex);
 
     if (images.length > 0) {
       this.ui.clearCanvasContainer();
       this.ui.showLoading();
 
-      const firstImage = images[0];
+      const initialImage = this.store.getCurrentImage() || images[0];
       this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store, this.options.autoHeight ?? false);
       this.canvas
-        .loadImage(firstImage.url)
+        .loadImage(initialImage.url)
         .then(() => {
           this.canvas?.renderAnnotations();
-          this.emit('imageLoad', firstImage);
+          this.emit('imageLoad', initialImage);
         })
         .catch(() => {
           this.ui.showError('Failed to load image');
