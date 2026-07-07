@@ -168,6 +168,14 @@ export interface ImageData {
   originalWidth?: number;
   originalHeight?: number;
   note?: string;
+  /**
+   * Stable identity for annotation preservation across editor instances.
+   * When set, preserved annotations are matched by this key even if the
+   * image's url or name change between sessions (e.g. a flattened annotated
+   * export is fed back instead of the original url). Optional — without it,
+   * matching falls back to the exact url, then to the normalized filename.
+   */
+  stateKey?: string;
 }
 
 // Overlay image data
@@ -252,6 +260,14 @@ export interface MarkupEditorOptions {
    * screens. Default false.
    */
   autoHeight?: boolean;
+  /**
+   * Keep each image's vector annotations and undo history in a module-level
+   * registry so they survive editor destroy/recreate cycles within the same
+   * page session. On load, images are matched by stateKey, exact url, or
+   * normalized filename, and their annotations, history and original url are
+   * restored automatically. Default true; set false to opt out.
+   */
+  preserveAnnotations?: boolean;
   toolbarPosition?: 'left' | 'right' | 'top' | 'bottom';
   locale?: string;
   plugins?: MarkupPlugin[];

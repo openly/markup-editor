@@ -415,6 +415,35 @@ export class Store extends EventEmitter {
     }
   }
 
+  /**
+   * Inject previously preserved annotations/history for one image, remapping
+   * the stored imageIds to the image's current id. Used by the annotation
+   * preservation registry when an editor is recreated.
+   */
+  restoreImageState(
+    imageId: string,
+    data: { annotations: Annotation[]; history: HistoryEntry[]; historyIndex: number }
+  ): void {
+    this.ensureImageState(imageId);
+    const cloned = JSON.parse(JSON.stringify(data)) as typeof data;
+    this.state.annotationsByImage[imageId] = cloned.annotations.map((a) => ({
+      ...a,
+      imageId,
+    }));
+    this.state.historyByImage[imageId] = cloned.history.map((h) => ({
+      ...h,
+      snapshot: (h.snapshot || []).map((a) => ({ ...a, imageId })),
+    }));
+    this.state.historyIndexByImage[imageId] = cloned.historyIndex;
+
+    // Re-capture the baseline (used by undo-to-empty) from the image as it is
+    // now — the caller may have swapped its url back to the original.
+    const image = this.state.images.find((img) => img.id === imageId);
+    if (image) {
+      this.initialImageStateByImage[imageId] = this.cloneImageState(image);
+    }
+  }
+
   // Tool settings
   setTool(tool: ToolType | string): void {
     this.state.currentTool = tool;
