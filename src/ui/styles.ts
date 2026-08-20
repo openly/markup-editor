@@ -16,7 +16,7 @@ export const styles = `
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 48px;
+  height: 40px;
   // padding: 0 12px;
   flex-shrink: 0;
   background: var(--me-surface);
@@ -124,6 +124,13 @@ export const styles = `
   display: flex;
   flex: 1;
   overflow: hidden;
+  /* Positioning context so the responsive history drawer (position: absolute)
+     anchors here — inside the editor, below the top bar — instead of escaping
+     to the page ("popping out"). */
+  position: relative;
+  /* The canvas hugs the image aspect ratio, so the area freed below it should
+     match the canvas colour (no mismatched band). */
+  background: var(--me-canvas-bg);
 }
 
 /* Toolbar */
@@ -157,6 +164,23 @@ export const styles = `
   width: 1px;
   height: 24px;
   margin: 0 8px;
+}
+
+/* Settings group (color + stroke pickers) */
+.me-toolbar-settings {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+/* When responsive, the settings group is moved into the top bar (after the
+   kebab) and laid out as an inline row. */
+.me-topbar .me-toolbar-settings {
+  flex-direction: row;
+  align-items: center;
+  gap: 4px;
+  margin-left: 4px;
 }
 
 /* Canvas area */
@@ -1012,6 +1036,12 @@ export const styles = `
   background: var(--me-surface-hover);
 }
 
+.me-kebab-separator {
+  height: 1px;
+  background: var(--me-border);
+  margin: 4px 6px;
+}
+
 .me-kebab-item.active {
   background: var(--me-primary);
   color: white;
@@ -1045,16 +1075,16 @@ export const styles = `
   color: rgba(255,255,255,0.7);
 }
 
-/* ===== RESPONSIVE: Container Queries ===== */
-.markup-editor {
-  container-type: inline-size;
-  container-name: markup-editor;
-}
+/* ===== RESPONSIVE =====
+   Breakpoints are driven by JS classes (me-bp-md/sm/xs) on .markup-editor, not
+   CSS container/media queries, so the layout is based on the *physical* size and
+   does NOT flip when the user changes browser zoom (which alters CSS-px width).
+   Rules are nested under each class (native CSS nesting = descendant match). */
 
-/* ----- Medium: container < 768px ----- */
-@container markup-editor (max-width: 768px) {
+/* ----- Medium: effective width <= 768px ----- */
+.markup-editor.me-bp-md {
   .me-topbar {
-    height: auto;
+    // height: auto;
     min-height: 40px;
     padding: 4px 8px;
     flex-wrap: wrap;
@@ -1095,6 +1125,12 @@ export const styles = `
     width: 180px;
   }
 
+  /* Keep the collapsed panel closed — this breakpoint's width rule above would
+     otherwise out-specify the base collapse rule and force it open. */
+  .me-history-wrapper.collapsed .me-history-panel {
+    width: 0;
+  }
+
   .me-notes-input {
     height: 44px;
   }
@@ -1125,25 +1161,28 @@ export const styles = `
 }
 
 /* ----- Small: container < 540px ----- */
-@container markup-editor (max-width: 540px) {
+.markup-editor.me-bp-sm {
   .me-topbar {
-    min-height: 36px;
+    // min-height: 36px;
     padding: 4px 6px;
     gap: 2px;
+    flex-wrap: nowrap;
   }
 
   .me-topbar-section {
     gap: 2px;
+    flex-shrink: 0;
   }
 
   .me-topbar-center {
     order: 0;
     width: auto;
-    justify-content: center;
+    justify-content: flex-start;
     gap: 2px;
     padding-top: 0;
     flex: 1;
     min-width: 0;
+    flex-wrap: nowrap;
   }
 
   .me-image-name {
@@ -1195,77 +1234,25 @@ export const styles = `
     gap: 4px;
   }
 
-  /* Switch toolbar to horizontal top */
-  .me-main {
-    flex-direction: column;
-    overflow: visible;
-    position: relative;
-  }
-
-  .me-toolbar {
-    flex-direction: row;
-    width: 100%;
-    border-right: none;
-    border-bottom: 1px solid var(--me-border);
-    padding: 4px 6px;
-    gap: 2px;
-    overflow: visible;
-    justify-content: center;
-    flex-wrap: wrap;
-    align-items: center;
-    position: relative;
-    z-index: 50;
-  }
-
-  .me-toolbar-divider {
-    width: 1px;
-    height: 24px;
-    margin: 0 4px;
-  }
-
   .me-btn-tool {
     width: 34px;
     height: 34px;
     flex-shrink: 0;
   }
 
-  .me-btn-tool .me-tooltip {
-    display: none;
+  /* ---- Reflow: tools + color/stroke fold into the single top bar ---- */
+  /* The toolbar's own controls move into the top bar (tools -> kebab menu,
+     color/stroke -> after the kebab), so the standalone toolbar collapses. */
+  .me-toolbar {
+    border-right: none;
+    padding: 0;
+    gap: 0;
   }
 
-  /* Color picker & stroke picker alignment in horizontal toolbar */
-  .me-color-picker {
-    display: flex;
-    align-items: center;
-    position: static;
-  }
-
-  .me-color-picker .me-btn {
-    padding: 4px;
-  }
-
-  /* Color dropdown: open above, anchored to canvas container */
-  .me-color-dropdown {
-    position: fixed;
-    left: auto;
-    right: auto;
-    bottom: auto;
-    top: auto;
-    margin: 0;
-    padding: 10px;
-    z-index: 200;
-  }
-
-  /* Stroke dropdown: open above */
-  .me-stroke-dropdown {
-    position: fixed;
-    left: auto;
-    right: auto;
-    bottom: auto;
-    top: auto;
-    margin: 0;
-    padding: 6px;
-    z-index: 200;
+  .me-toolbar .me-btn-tool,
+  .me-toolbar .me-kebab-btn,
+  .me-toolbar .me-toolbar-divider {
+    display: none !important;
   }
 
   /* History panel: slide-over drawer on small screens */
@@ -1391,7 +1378,7 @@ export const styles = `
 }
 
 /* ----- Extra small: container < 360px ----- */
-@container markup-editor (max-width: 360px) {
+.markup-editor.me-bp-xs {
   .me-topbar {
     padding: 2px 4px;
   }
@@ -1468,121 +1455,6 @@ export const styles = `
 
   .markup-editor {
     font-size: 12px;
-  }
-}
-
-/* ----- Fallback: media queries for when container queries are unsupported ----- */
-@supports not (container-type: inline-size) {
-  @media (max-width: 768px) {
-    .me-topbar {
-      height: auto;
-      min-height: 40px;
-      padding: 4px 8px;
-      flex-wrap: wrap;
-      gap: 4px;
-    }
-
-    .me-topbar-center {
-      gap: 2px;
-      flex-wrap: wrap;
-      justify-content: center;
-    }
-
-    .me-image-name {
-      max-width: 120px;
-    }
-
-    .me-btn-icon {
-      width: 32px;
-      height: 32px;
-    }
-
-    .me-btn-tool {
-      width: 36px;
-      height: 36px;
-    }
-
-    .me-history-wrapper .me-history-panel {
-      width: 180px;
-    }
-  }
-
-  @media (max-width: 540px) {
-    .me-topbar-center {
-      order: 3;
-      width: 100%;
-      justify-content: center;
-    }
-
-    .me-image-name {
-      display: none;
-    }
-
-    .me-main {
-      flex-direction: column;
-      overflow: visible;
-      position: relative;
-    }
-
-    .me-toolbar {
-      flex-direction: row;
-      width: 100%;
-      border-right: none;
-      border-bottom: 1px solid var(--me-border);
-      padding: 4px 6px;
-      gap: 2px;
-      overflow: visible;
-      justify-content: center;
-      flex-wrap: wrap;
-      align-items: center;
-      position: relative;
-      z-index: 50;
-    }
-
-    .me-history-wrapper {
-      position: absolute;
-      top: 0;
-      right: 0;
-      bottom: 0;
-      z-index: 60;
-      border-left: 1px solid var(--me-border);
-      box-shadow: -4px 0 16px rgba(0,0,0,0.15);
-    }
-
-    .me-history-wrapper.collapsed {
-      box-shadow: none;
-      border-left: none;
-    }
-
-    .me-history-wrapper .me-history-panel {
-      width: 200px;
-    }
-
-    .me-toolbar-divider {
-      width: 1px;
-      height: 24px;
-      margin: 0 4px;
-    }
-
-    .me-btn-tool .me-tooltip {
-      display: none;
-    }
-
-    .me-color-picker {
-      display: flex;
-      align-items: center;
-      position: static;
-    }
-
-    .me-modal-textarea {
-      width: 100%;
-      min-width: 200px;
-    }
-
-    .me-url-input {
-      width: 100%;
-      max-width: 280px;
-    }
   }
 }
 `;

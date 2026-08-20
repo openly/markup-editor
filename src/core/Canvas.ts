@@ -21,12 +21,20 @@ import type {
 import { uid } from '../utils/uid';
 
 export class Canvas {
+  private static readonly STROKE_REFERENCE_SIZE = 1000;
   private static readonly SHAPE_MIN_SIZE = 5;
   private static readonly LINE_MIN_LENGTH = 10;
+  private static readonly HANDLE_BASE_RADIUS = 18;
+  private static readonly HANDLE_SCALE_FACTOR = 0.015;
   private static readonly CROP_STROKE = '#0ea5e9';
+  private static readonly MIN_MEMAIN_HEIGHT = 160;
 
   private container: HTMLElement;
   private store: Store;
+  // Auto-height: shrink the host container to fit the image aspect ratio.
+  private autoHeight = false;
+  private hostContainer: HTMLElement | null = null;
+  private hostMaxHeight = 0;
   private stage: Konva.Stage;
   private imageLayer: Konva.Layer;
   private gridLayer: Konva.Layer;
@@ -60,12 +68,44 @@ export class Canvas {
   private previousSelectedId: string | null = null;
   private skipNextDeselect = false;
 
+  // When the container is sized to the image (responsive), the image should
+  // fill it edge-to-edge with no padding/letterboxing.
+  private fitFill = false;
+
   // Shape references
   private shapeRefs: Map<string, Konva.Shape | Konva.Group> = new Map();
 
-  constructor(container: HTMLElement, store: Store) {
+  private getScaledStrokeWidth(): number {
+    const sw = this.store.getState().strokeWidth;
+    if (!this.imageElement) return sw;
+    const maxDim = Math.max(this.imageElement.width, this.imageElement.height);
+    if (maxDim <= Canvas.STROKE_REFERENCE_SIZE) return sw;
+    return Math.round(sw * (maxDim / Canvas.STROKE_REFERENCE_SIZE));
+  }
+
+  constructor(container: HTMLElement, store: Store, autoHeight = false) {
     this.container = container;
     this.store = store;
+    this.autoHeight = autoHeight;
+
+    if (autoHeight) {
+      // The host is the element the editor was mounted into (parent of the
+      // .markup-editor root). Capture its initial height as the cap we never
+      // grow past — we only shrink to remove wasted space around the image.
+      const root = this.container.closest('.markup-editor') as HTMLElement | null;
+      this.hostContainer = (root?.parentElement as HTMLElement) || null;
+      if (this.hostContainer) {
+        // Persist the original (unshrunk) height so a re-init while the host is
+        // already shrunk doesn't lock the cap to the reduced height.
+        const stored = this.hostContainer.dataset.meMaxHeight;
+        if (stored) {
+          this.hostMaxHeight = parseFloat(stored);
+        } else {
+          this.hostMaxHeight = this.hostContainer.clientHeight;
+          this.hostContainer.dataset.meMaxHeight = String(this.hostMaxHeight);
+        }
+      }
+    }
 
     // Create stage
     this.stage = new Konva.Stage({
@@ -98,8 +138,12 @@ export class Canvas {
 
     // Handle resize
     const resizeObserver = new ResizeObserver(() => {
+      // Adjust container height to the image on responsive widths first so the
+      // stage picks up the new height, then re-fit the image into it.
+      this.updateCanvasHeight();
       this.stage.width(this.container.offsetWidth);
       this.stage.height(this.container.offsetHeight);
+      this.fitToScreen();
     });
     resizeObserver.observe(this.container);
 
@@ -252,8 +296,11 @@ export class Canvas {
     const tool = state.currentTool as ToolType;
 
     if (tool === 'select') {
-      // Enable stage dragging
-      this.stage.draggable(true);
+      // Only enable stage dragging when clicking on empty area or image, not on annotations
+      const target = _e.target;
+      const isAnnotation = target !== this.stage && target !== this.imageNode &&
+        target.getLayer() === this.annotationLayer;
+      this.stage.draggable(!isAnnotation);
       return;
     }
 
@@ -288,15 +335,17 @@ export class Canvas {
     const point = this.getPointerPosition();
     if (!point) return;
 
-    // Clear previous preview
-    this.clearPreviewShape();
+    // Clear previous preview (skip for text to avoid flickering — reused below)
+    if (tool !== 'text') {
+      this.clearPreviewShape();
+    }
 
     if (tool === 'pen' || tool === 'highlight') {
       this.currentPoints.push(point.x, point.y);
       this.previewShape = new Konva.Line({
         points: this.currentPoints,
         stroke: state.color,
-        strokeWidth: tool === 'highlight' ? state.strokeWidth * 4 : state.strokeWidth,
+        strokeWidth: tool === 'highlight' ? this.getScaledStrokeWidth() * 4 : this.getScaledStrokeWidth(),
         opacity: tool === 'highlight' ? 0.4 : 1,
         tension: 0.5,
         lineCap: 'round',
@@ -314,7 +363,7 @@ export class Canvas {
         width: rect.width,
         height: rect.height,
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         cornerRadius: cornerR,
         dash: [5, 5],
         fill: state.color,
@@ -328,7 +377,7 @@ export class Canvas {
           rect.x + rect.width * 0.5, rect.y + rect.height,
         ],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         closed: true,
         fill: state.color,
         opacity: 0.7,
@@ -336,7 +385,7 @@ export class Canvas {
       this.previewShape = group;
     } else if (tool === 'caption') {
       const rect = this.getRectFromPoints(this.startPoint, point);
-      const barH = Math.min(30, rect.height * 0.25);
+      const barH = Math.max(50, rect.height * 0.25);
       const group = new Konva.Group();
       // Frame border
       group.add(new Konva.Rect({
@@ -345,7 +394,7 @@ export class Canvas {
         width: rect.width,
         height: rect.height,
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
       }));
       // Caption bar
@@ -363,9 +412,31 @@ export class Canvas {
       this.previewShape = new Konva.Line({
         points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
         lineCap: 'round',
+      });
+    } else if (tool === 'text') {
+      // Show a text preview that scales with drag distance
+      const dist = Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y);
+      const effectiveFontSize = Math.round(state.fontSize / state.scale);
+      const previewFontSize = dist > Canvas.SHAPE_MIN_SIZE
+        ? Math.max(8, Math.round(dist * 0.25))
+        : effectiveFontSize;
+      // Reuse existing preview text node to avoid flickering
+      if (this.previewShape && this.previewShape instanceof Konva.Text) {
+        this.previewShape.fontSize(previewFontSize);
+        this.previewLayer.batchDraw();
+        return;
+      }
+      this.previewShape = new Konva.Text({
+        x: this.startPoint.x,
+        y: this.startPoint.y,
+        text: 'Your text here',
+        fontSize: previewFontSize,
+        fontFamily: 'Arial',
+        fill: state.color,
+        opacity: 0.8,
       });
     } else if (tool === 'rectangle' || tool === 'blur') {
       const rect = this.getRectFromPoints(this.startPoint, point);
@@ -375,7 +446,7 @@ export class Canvas {
         width: rect.width,
         height: rect.height,
         stroke: tool === 'blur' ? '#666' : state.color,
-        strokeWidth: tool === 'blur' ? 2 : state.strokeWidth,
+        strokeWidth: tool === 'blur' ? 2 : this.getScaledStrokeWidth(),
         dash: [5, 5],
         fill: tool === 'blur' ? 'rgba(0,0,0,0.2)' : undefined,
       });
@@ -388,24 +459,24 @@ export class Canvas {
         radiusX: Math.abs(width) / 2,
         radiusY: Math.abs(height) / 2,
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
       });
     } else if (tool === 'arrow') {
       this.previewShape = new Konva.Arrow({
         points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         fill: state.color,
-        pointerLength: state.strokeWidth * 6 + 4,
-        pointerWidth: state.strokeWidth * 5 + 4,
+        pointerLength: this.getScaledStrokeWidth() * 6 + 4,
+        pointerWidth: this.getScaledStrokeWidth() * 5 + 4,
         dash: [5, 5],
       });
     } else if (tool === 'line') {
       this.previewShape = new Konva.Line({
         points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
       });
     } else if (tool === 'measure') {
@@ -416,7 +487,7 @@ export class Canvas {
       group.add(new Konva.Line({
         points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
         dash: [5, 5],
       }));
       // End caps
@@ -428,7 +499,7 @@ export class Canvas {
           this.startPoint.y + Math.cos(angle) * capLen,
         ],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
       }));
       group.add(new Konva.Line({
         points: [
@@ -438,7 +509,7 @@ export class Canvas {
           point.y + Math.cos(angle) * capLen,
         ],
         stroke: state.color,
-        strokeWidth: state.strokeWidth,
+        strokeWidth: this.getScaledStrokeWidth(),
       }));
       this.previewShape = group;
     } else if (tool === 'crop') {
@@ -496,7 +567,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: this.currentPoints,
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as PenAnnotation;
         }
         break;
@@ -511,7 +582,7 @@ export class Canvas {
             color: state.color,
             opacity: 0.4,
             points: this.currentPoints,
-            strokeWidth: state.strokeWidth * 4,
+            strokeWidth: this.getScaledStrokeWidth() * 4,
           } as HighlightAnnotation;
         }
         break;
@@ -530,7 +601,7 @@ export class Canvas {
             y: rect.y,
             width: rect.width,
             height: rect.height,
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as RectAnnotation;
         }
         break;
@@ -551,7 +622,7 @@ export class Canvas {
             y: (this.startPoint.y + point.y) / 2,
             radiusX: Math.abs(width) / 2,
             radiusY: Math.abs(height) / 2,
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as EllipseAnnotation;
         }
         break;
@@ -568,7 +639,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as ArrowAnnotation;
         }
         break;
@@ -585,7 +656,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as LineAnnotation;
         }
         break;
@@ -602,15 +673,19 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: [this.startPoint.x, this.startPoint.y, point.x, point.y],
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as MeasureAnnotation;
         }
         break;
       }
 
       case 'text': {
-        // Convert screen fontSize to image-space so text appears readable at current zoom
         const effectiveFontSize = Math.round(state.fontSize / state.scale);
+        const dist = Math.hypot(point.x - this.startPoint.x, point.y - this.startPoint.y);
+        // If user dragged, scale font size based on drag distance
+        const fontSize = dist > Canvas.SHAPE_MIN_SIZE
+          ? Math.max(8, Math.round(dist * 0.25))
+          : effectiveFontSize;
         annotation = {
           id: uid(),
           type: 'text',
@@ -620,8 +695,8 @@ export class Canvas {
           opacity: 1,
           x: this.startPoint.x,
           y: this.startPoint.y,
-          text: 'Text',
-          fontSize: effectiveFontSize,
+          text: 'Your text here',
+          fontSize,
           fontFamily: 'Arial',
         } as TextAnnotation;
         break;
@@ -645,7 +720,7 @@ export class Canvas {
             text: 'Your text here',
             fontSize: effectiveFontSize,
             fontFamily: 'Arial',
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as CalloutAnnotation;
         }
         break;
@@ -653,6 +728,10 @@ export class Canvas {
 
       case 'caption': {
         const rect = this.getRectFromPoints(this.startPoint, point);
+        const maxCaptionW = 300 / state.scale;
+        const maxCaptionH = 200 / state.scale;
+        rect.width = Math.min(rect.width, maxCaptionW);
+        rect.height = Math.min(rect.height, maxCaptionH);
         if (rect.width > Canvas.SHAPE_MIN_SIZE && rect.height > Canvas.SHAPE_MIN_SIZE) {
           const effectiveFontSize = Math.round(state.fontSize / state.scale);
           annotation = {
@@ -669,7 +748,7 @@ export class Canvas {
             text: 'Your text here',
             fontSize: effectiveFontSize,
             fontFamily: 'Arial',
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as CaptionAnnotation;
         }
         break;
@@ -689,7 +768,7 @@ export class Canvas {
             color: state.color,
             opacity: 1,
             points: [this.startPoint.x, this.startPoint.y, midX, midY, point.x, point.y],
-            strokeWidth: state.strokeWidth,
+            strokeWidth: this.getScaledStrokeWidth(),
           } as CurveAnnotation;
         }
         break;
@@ -762,6 +841,8 @@ export class Canvas {
     }
 
     if (!id) {
+      // Disable dragging on previously selected shape
+      this.transformer.nodes().forEach((n: Konva.Node) => n.draggable(false));
       this.transformer.nodes([]);
       this.transformer.visible(false);
       return;
@@ -769,6 +850,7 @@ export class Canvas {
 
     const shape = this.shapeRefs.get(id);
     if (shape) {
+      shape.draggable(true);
       this.transformer.nodes([shape]);
       this.transformer.rotateEnabled(false);
       this.transformer.keepRatio(false);
@@ -852,6 +934,10 @@ export class Canvas {
         this.imageLayer.moveToBottom();
         this.imageLayer.batchDraw();
 
+        // Size the container to the image on responsive widths, then fit.
+        this.updateCanvasHeight();
+        this.stage.width(this.container.offsetWidth);
+        this.stage.height(this.container.offsetHeight);
         // Fit to screen (accounts for rotation)
         this.fitToScreen();
         this.renderGrid();
@@ -895,6 +981,10 @@ export class Canvas {
       this.imageLayer.batchDraw();
       this.annotationLayer.batchDraw();
       this.previewLayer.batchDraw();
+      // Rotation swaps aspect ratio — re-sync container height before fitting.
+      this.updateCanvasHeight();
+      this.stage.width(this.container.offsetWidth);
+      this.stage.height(this.container.offsetHeight);
       this.fitToScreen();
     }
   }
@@ -1200,10 +1290,87 @@ export class Canvas {
     this.annotationLayer.batchDraw();
   }
 
+  /** Intrinsic content height of a flex element (ignores stretch to siblings). */
+  private measureContentHeight(el: HTMLElement): number {
+    const cs = getComputedStyle(el);
+    let h = parseFloat(cs.paddingTop) + parseFloat(cs.paddingBottom);
+    const gap = parseFloat(cs.rowGap || cs.gap || '0') || 0;
+    let visible = 0;
+    for (const child of Array.from(el.children)) {
+      const ch = (child as HTMLElement).offsetHeight;
+      if (ch > 0) {
+        h += ch;
+        visible++;
+      }
+    }
+    if (visible > 1) h += gap * (visible - 1);
+    return h;
+  }
+
+  /**
+   * When `autoHeight` is enabled, shrink the host container so its height fits
+   * the current image's aspect ratio (never taller than the initial height).
+   * This removes wasted vertical space around landscape images, especially on
+   * narrow screens. When disabled, the image is simply centered/letterboxed in
+   * whatever space the host provides.
+   */
+  private updateCanvasHeight(): void {
+    if (!this.autoHeight || !this.hostContainer) {
+      this.fitFill = false;
+      return;
+    }
+
+    // Nothing to size to yet.
+    if (!this.imageElement) {
+      this.fitFill = false;
+      return;
+    }
+
+    // Displayed dimensions account for 90/270 rotation swapping w/h.
+    const currentImage = this.store.getCurrentImage();
+    const rotation = currentImage ? currentImage.rotation : 0;
+    const isRotated = rotation === 90 || rotation === 270;
+    const imgW = isRotated ? this.imageElement.height : this.imageElement.width;
+    const imgH = isRotated ? this.imageElement.width : this.imageElement.height;
+    if (!imgW || !imgH) return;
+
+    const meMain = this.container.parentElement; // .me-main (row: toolbar | canvas | panels)
+    const root = this.container.closest('.markup-editor') as HTMLElement | null;
+    if (!meMain || !root) return;
+
+    // Height taken up by full-width chrome above/below .me-main (top bar, notes).
+    const chrome = Math.max(0, root.clientHeight - meMain.clientHeight);
+
+    // Ideal canvas height so the image fills the canvas width exactly.
+    const canvasWidth = this.container.clientWidth;
+    const hugHeight = canvasWidth / (imgW / imgH);
+
+    // .me-main must also fit the (vertical) toolbar without clipping its tools.
+    // The toolbar is a stretched flex item, so its own height tracks .me-main —
+    // measure its intrinsic content height from its children instead.
+    const toolbar = root.querySelector('.me-toolbar') as HTMLElement | null;
+    const toolbarHeight = toolbar ? this.measureContentHeight(toolbar) : 0;
+
+    const idealMeMain = Math.max(hugHeight, toolbarHeight, Canvas.MIN_MEMAIN_HEIGHT);
+    const cap = this.hostMaxHeight || root.clientHeight;
+    const idealHost = Math.min(cap, Math.round(chrome + idealMeMain));
+
+    if (Math.round(this.hostContainer.clientHeight) !== idealHost) {
+      this.hostContainer.style.height = `${idealHost}px`;
+    }
+
+    // Fill the canvas flush (no padding) only when it ends up matching the
+    // image aspect; otherwise the image is letterboxed and centered.
+    const finalMeMain = idealHost - chrome;
+    this.fitFill = Math.abs(finalMeMain - hugHeight) <= 2;
+  }
+
   fitToScreen(): void {
     if (!this.imageElement) return;
 
-    const padding = 40;
+    // When the container is sized to the image, fill it flush with no padding
+    // and allow upscaling so there's no gap between canvas and image.
+    const padding = this.fitFill ? 0 : 10;
     const stageWidth = this.stage.width();
     const stageHeight = this.stage.height();
     const origWidth = this.imageElement.width;
@@ -1218,7 +1385,7 @@ export class Canvas {
 
     const scaleX = (stageWidth - padding * 2) / imageWidth;
     const scaleY = (stageHeight - padding * 2) / imageHeight;
-    const scale = Math.min(scaleX, scaleY, 1);
+    const scale = this.fitFill ? Math.min(scaleX, scaleY) : Math.min(scaleX, scaleY, 1);
 
     // When rotated, the bounding box shifts in layer coords due to offset-based rotation
     const bbLeft = isRotated ? (origWidth - origHeight) / 2 : 0;
@@ -1228,6 +1395,33 @@ export class Canvas {
 
     this.store.setScale(scale);
     this.store.setPosition({ x, y });
+    this.updateTransform();
+  }
+
+  /**
+   * Zoom by `factor` (e.g. 1.2 in, 1/1.2 out) around the centre of the visible
+   * canvas, so the image stays centred instead of drifting toward a corner.
+   */
+  zoomBy(factor: number): void {
+    const state = this.store.getState();
+    const oldScale = state.scale;
+    const newScale = Math.max(0.1, Math.min(5, oldScale * factor));
+    if (newScale === oldScale) return;
+
+    // Keep the point at the viewport centre fixed while scaling.
+    const cx = this.stage.width() / 2;
+    const cy = this.stage.height() / 2;
+    const anchor = {
+      x: (cx - state.position.x) / oldScale,
+      y: (cy - state.position.y) / oldScale,
+    };
+    const newPos = {
+      x: cx - anchor.x * newScale,
+      y: cy - anchor.y * newScale,
+    };
+
+    this.store.setScale(newScale);
+    this.store.setPosition(newPos);
     this.updateTransform();
   }
 
@@ -1264,6 +1458,11 @@ export class Canvas {
     this.annotationLayer.batchDraw();
   }
 
+  private getHandleRadius(): number {
+    const imgHeight = this.imageElement?.height ?? 0;
+    return Math.max(Canvas.HANDLE_BASE_RADIUS, imgHeight * Canvas.HANDLE_SCALE_FACTOR);
+  }
+
   private createShape(annotation: Annotation): Konva.Shape | Konva.Group | null {
     const image = this.store.getCurrentImage();
     if (!image) return null;
@@ -1273,6 +1472,9 @@ export class Canvas {
 
     const handleClick = () => {
       if (this.store.getState().currentTool !== 'select') return;
+      // Don't re-select if already selected (avoids re-render that destroys handles mid-drag)
+      if (annotation.id === this.store.getState().selectedId) return;
+      this.skipNextDeselect = true;
       this.store.selectAnnotation(annotation.id);
     };
 
@@ -1352,16 +1554,15 @@ export class Canvas {
           radiusY: Math.max(5, ellipse.radiusY() * scaleY),
         });
       } else if (annotation.type === 'text') {
-        const textNode = node as Konva.Text;
-        const baseWidth = typeof annotation.width === 'number'
-          ? annotation.width
-          : Math.max(20, textNode.width());
-        const baseFontSize = Math.max(1, annotation.fontSize || textNode.fontSize());
+        // Scale font size proportionally — no fixed width so text reflows naturally
+        const baseFontSize = Math.max(1, annotation.fontSize || (node as Konva.Text).fontSize());
+        const scale = Math.max(Math.abs(scaleX), Math.abs(scaleY));
+        const newFontSize = Math.max(8, Math.round(baseFontSize * scale));
+
         this.store.updateAnnotation(image.id, annotation.id, {
           x: node.x(),
           y: node.y(),
-          width: Math.max(20, baseWidth * scaleX),
-          fontSize: Math.max(8, baseFontSize * scaleY),
+          fontSize: newFontSize,
         });
       }
     };
@@ -1385,7 +1586,7 @@ export class Canvas {
           hitStrokeWidth: Math.max(annotation.strokeWidth, 15),
           draggable: isSelected,
         });
-        line.on('click tap', handleClick);
+        line.on('mousedown touchstart', handleClick);
         line.on('dragmove', handleDragMove);
         line.on('dragend', handleDragEnd);
         return line;
@@ -1403,7 +1604,7 @@ export class Canvas {
           opacity: annotation.opacity,
           draggable: isSelected,
         });
-        rect.on('click tap', handleClick);
+        rect.on('mousedown touchstart', handleClick);
         rect.on('dragmove', handleDragMove);
         rect.on('dragend', handleDragEnd);
         rect.on('transformend', handleTransformEnd);
@@ -1422,7 +1623,7 @@ export class Canvas {
           opacity: annotation.opacity,
           draggable: isSelected,
         });
-        ellipse.on('click tap', handleClick);
+        ellipse.on('mousedown touchstart', handleClick);
         ellipse.on('dragmove', handleDragMove);
         ellipse.on('dragend', handleDragEnd);
         ellipse.on('transformend', handleTransformEnd);
@@ -1448,7 +1649,7 @@ export class Canvas {
         group.add(arrow);
 
         if (isSelected) {
-          const handleRadius = 18;
+          const handleRadius = this.getHandleRadius();
           const makeHandle = (cx: number, cy: number, isStart: boolean) => {
             const hGroup = new Konva.Group({ x: cx, y: cy, draggable: true });
             hGroup.add(new Konva.Circle({
@@ -1476,7 +1677,7 @@ export class Canvas {
           group.add(makeHandle(ax2, ay2, false));
         }
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         return group;
       }
 
@@ -1495,7 +1696,7 @@ export class Canvas {
         lineGroup.add(line);
 
         if (isSelected) {
-          const handleRadius = 18;
+          const handleRadius = this.getHandleRadius();
           const makeHandle = (cx: number, cy: number, isStart: boolean) => {
             const hGroup = new Konva.Group({ x: cx, y: cy, draggable: true });
             hGroup.add(new Konva.Circle({
@@ -1523,7 +1724,7 @@ export class Canvas {
           lineGroup.add(makeHandle(lx2, ly2, false));
         }
 
-        lineGroup.on('click tap', handleClick);
+        lineGroup.on('mousedown touchstart', handleClick);
         return lineGroup;
       }
 
@@ -1580,7 +1781,7 @@ export class Canvas {
         group.add(cap2);
 
         if (isSelected) {
-          const handleRadius = 18;
+          const handleRadius = this.getHandleRadius();
 
           const makeHandle = (cx: number, cy: number, isStart: boolean) => {
             const hGroup = new Konva.Group({ x: cx, y: cy, draggable: true });
@@ -1616,7 +1817,7 @@ export class Canvas {
           group.add(makeHandle(mx2, my2, false));
         }
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         return group;
       }
 
@@ -1654,7 +1855,7 @@ export class Canvas {
 
         if (isSelected) {
           // Three draggable handles — only visible when selected
-          const handleRadius = 10;
+          const handleRadius = this.getHandleRadius();
           const makeHandle = (hx: number, hy: number) => {
             return new Konva.Circle({
               x: hx,
@@ -1735,12 +1936,12 @@ export class Canvas {
           group.add(endHandle);
         }
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         return group;
       }
 
       case 'caption': {
-        const barH = Math.min(30, annotation.height * 0.25);
+        const barH = Math.max(50, annotation.height * 0.25);
         const padding = 6;
         const availW = annotation.width - padding * 2;
 
@@ -1805,7 +2006,7 @@ export class Canvas {
           verticalAlign: 'middle',
         }));
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         group.on('dblclick dbltap', () => {
           this.store.emit('textEditRequest', annotation);
         });
@@ -1892,7 +2093,7 @@ export class Canvas {
           verticalAlign: 'middle',
         }));
 
-        group.on('click tap', handleClick);
+        group.on('mousedown touchstart', handleClick);
         group.on('dblclick dbltap', () => {
           this.store.emit('textEditRequest', annotation);
         });
@@ -1911,11 +2112,11 @@ export class Canvas {
           fontFamily: annotation.fontFamily,
           fill: annotation.color,
           opacity: annotation.opacity,
-          width: annotation.width,
+          wrap: 'none',
           padding: 4,
           draggable: isSelected,
         });
-        text.on('click tap', handleClick);
+        text.on('mousedown touchstart', handleClick);
         text.on('dblclick dbltap', () => {
           this.store.emit('textEditRequest', annotation);
         });

@@ -13,6 +13,11 @@ import type {
 } from '../types';
 import { Store } from './Store';
 import { Canvas } from './Canvas';
+import {
+  preserveImageState,
+  findPreservedState,
+  clearPreservedState,
+} from './preservation';
 import { UI } from '../ui/UI';
 import { injectStyles } from '../ui/styles';
 import { getTheme, applyTheme, watchSystemTheme } from '../themes';
@@ -28,10 +33,17 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
   private themeMode: ThemeMode;
   private unwatchTheme?: () => void;
   private plugins: MarkupPlugin[] = [];
+  private preserveAnnotations: boolean;
+
+  /** Drop all annotation state preserved across editor instances. */
+  static clearPreservedAnnotations(): void {
+    clearPreservedState();
+  }
 
   constructor(options: MarkupEditorOptions) {
     super();
     this.options = options;
+    this.preserveAnnotations = options.preserveAnnotations ?? true;
 
     // Resolve container
     if (typeof options.container === 'string') {
@@ -95,7 +107,7 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
 
     // Load initial images
     if (options.images && options.images.length > 0) {
-      this.loadImages(options.images);
+      this.loadImages(options.images, options.initialImageIndex);
     } else {
       this.ui.showEmptyState();
     }
@@ -150,10 +162,18 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
 
     this.store.on('historyChange', (history: HistoryEntry[]) => {
       this.emit('historyChange', history);
+      // Keep the preservation registry current so state survives even if the
+      // host recreates the editor without a clean destroy.
+      const image = this.store.getCurrentImage();
+      if (image) this.persistImageState(image);
     });
 
     this.store.on('fitToScreen', () => {
       this.canvas?.fitToScreen();
+    });
+
+    this.store.on('zoomBy', (factor: number) => {
+      this.canvas?.zoomBy(factor);
     });
 
     this.store.on('textEditRequest', (annotation: Annotation) => {
@@ -324,7 +344,45 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     saveBtn.textContent = 'Save';
     saveBtn.onclick = () => {
       const image = this.store.getCurrentImage();
-      if (image) {
+      if (image && annotation.type === 'text') {
+        const measure = document.createElement('canvas').getContext('2d');
+        let fontSize = (annotation as any).fontSize || 16;
+        const fontFamily = (annotation as any).fontFamily || 'Arial';
+        const padding = 8;
+        const annX = (annotation as any).x || 0;
+        const imgWidth = image.originalWidth || 1000;
+        const maxWidth = imgWidth - annX;
+
+        if (measure) {
+          measure.font = `${fontSize}px ${fontFamily}`;
+          let textWidth = measure.measureText(textarea.value).width + padding;
+
+          // Shrink font if text exceeds available image space
+          if (textWidth > maxWidth) {
+            fontSize = Math.max(8, Math.floor(fontSize * (maxWidth / textWidth)));
+            measure.font = `${fontSize}px ${fontFamily}`;
+            textWidth = measure.measureText(textarea.value).width + padding;
+          }
+
+          const finalWidth = Math.min(textWidth, maxWidth);
+          // Auto-reposition: if text would overflow the image right edge, shift it left
+          let newX = annX;
+          if (annX + finalWidth > imgWidth) {
+            newX = Math.max(0, imgWidth - finalWidth);
+          }
+
+          this.store.updateAnnotation(image.id, annotation.id, {
+            text: textarea.value,
+            width: finalWidth,
+            fontSize,
+            x: newX,
+          });
+        } else {
+          this.store.updateAnnotation(image.id, annotation.id, {
+            text: textarea.value,
+          });
+        }
+      } else if (image) {
         this.store.updateAnnotation(image.id, annotation.id, {
           text: textarea.value,
         });
@@ -359,9 +417,53 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     textarea.select();
   }
 
+  // ------- Annotation preservation across editor instances -------
+
+  private persistImageState(image: ImageData): void {
+    if (!this.preserveAnnotations) return;
+    const annotations = this.store.getAnnotations(image.id);
+    const history = this.store.getHistory(image.id);
+    // Untouched image: keep whatever was preserved before instead of
+    // overwriting it with an empty snapshot.
+    if (annotations.length === 0 && history.length === 0) return;
+
+    preserveImageState(image, {
+      url: image.url,
+      rotation: image.rotation,
+      note: image.note,
+      annotations: JSON.parse(JSON.stringify(annotations)),
+      history: JSON.parse(JSON.stringify(history)),
+      historyIndex: this.store.getHistoryIndex(image.id),
+    });
+  }
+
+  private persistAllImageStates(): void {
+    if (!this.preserveAnnotations) return;
+    this.store.getState().images.forEach((image) => this.persistImageState(image));
+  }
+
+  private applyPreservedState(image: ImageData): void {
+    if (!this.preserveAnnotations) return;
+    const preserved = findPreservedState(image);
+    if (!preserved) return;
+
+    // Re-edit on the image the annotations were drawn on — not on a flattened
+    // annotated export, which would double-render the shapes.
+    image.url = preserved.url;
+    image.rotation = preserved.rotation;
+    if (preserved.note && !image.note) image.note = preserved.note;
+    this.store.restoreImageState(image.id, preserved);
+
+    // Surface the restored history in the UI when it's the visible image.
+    if (this.store.getCurrentImage()?.id === image.id) {
+      this.store.emit('historyChange', this.store.getHistory(image.id));
+    }
+  }
+
   // Public API implementation
 
   destroy(): void {
+    this.persistAllImageStates();
     this.emit('destroy');
     this.plugins.forEach((plugin) => plugin.uninstall?.(this));
     this.unwatchTheme?.();
@@ -382,14 +484,16 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
 
     const hadImages = this.store.getState().images.length > 0;
     this.store.addImage(image);
+    this.applyPreservedState(image);
 
     if (!hadImages) {
       this.ui.clearCanvasContainer();
       this.ui.showLoading();
 
       try {
-        this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store);
-        await this.canvas.loadImage(url);
+        this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store, this.options.autoHeight ?? false);
+        // image.url may have been swapped to a preserved original url
+        await this.canvas.loadImage(image.url);
         this.canvas.renderAnnotations();
         this.emit('imageLoad', image);
       } catch (error) {
@@ -398,20 +502,23 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     }
   }
 
-  loadImages(images: ImageData[]): void {
-    this.store.setImages(images);
+  loadImages(images: ImageData[], initialIndex = 0): void {
+    // Keep the outgoing images' annotations before setImages wipes them.
+    this.persistAllImageStates();
+    this.store.setImages(images, initialIndex);
+    images.forEach((image) => this.applyPreservedState(image));
 
     if (images.length > 0) {
       this.ui.clearCanvasContainer();
       this.ui.showLoading();
 
-      const firstImage = images[0];
-      this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store);
+      const initialImage = this.store.getCurrentImage() || images[0];
+      this.canvas = new Canvas(this.ui.getCanvasContainer(), this.store, this.options.autoHeight ?? false);
       this.canvas
-        .loadImage(firstImage.url)
+        .loadImage(initialImage.url)
         .then(() => {
           this.canvas?.renderAnnotations();
-          this.emit('imageLoad', firstImage);
+          this.emit('imageLoad', initialImage);
         })
         .catch(() => {
           this.ui.showError('Failed to load image');

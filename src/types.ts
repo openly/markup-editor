@@ -73,6 +73,7 @@ export interface TextAnnotation extends BaseAnnotation {
   fontSize: number;
   fontFamily: string;
   width?: number;
+  height?: number;
 }
 
 export interface HighlightAnnotation extends BaseAnnotation {
@@ -167,6 +168,14 @@ export interface ImageData {
   originalWidth?: number;
   originalHeight?: number;
   note?: string;
+  /**
+   * Stable identity for annotation preservation across editor instances.
+   * When set, preserved annotations are matched by this key even if the
+   * image's url or name change between sessions (e.g. a flattened annotated
+   * export is fed back instead of the original url). Optional — without it,
+   * matching falls back to the exact url, then to the normalized filename.
+   */
+  stateKey?: string;
 }
 
 // Overlay image data
@@ -234,11 +243,31 @@ export interface MarkupEditorOptions {
   defaultFontSize?: number;
   defaultOverlayOpacity?: number;
   images?: ImageData[];
+  /**
+   * Index of the image to show first when the editor loads. Defaults to 0.
+   * Avoids a flash/race where image 0 loads before navigating elsewhere.
+   */
+  initialImageIndex?: number;
   showToolbar?: boolean;
   showHistoryPanel?: boolean;
   showNotesPanel?: boolean;
   withoutThumb?: boolean;
   showTopBar?: boolean;
+  /**
+   * When true, the editor shrinks its host container's height to fit the
+   * current image's aspect ratio (never taller than the container's initial
+   * height). Removes wasted vertical space around landscape images on narrow
+   * screens. Default false.
+   */
+  autoHeight?: boolean;
+  /**
+   * Keep each image's vector annotations and undo history in a module-level
+   * registry so they survive editor destroy/recreate cycles within the same
+   * page session. On load, images are matched by stateKey, exact url, or
+   * normalized filename, and their annotations, history and original url are
+   * restored automatically. Default true; set false to opt out.
+   */
+  preserveAnnotations?: boolean;
   toolbarPosition?: 'left' | 'right' | 'top' | 'bottom';
   locale?: string;
   plugins?: MarkupPlugin[];
