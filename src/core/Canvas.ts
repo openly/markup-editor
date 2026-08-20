@@ -432,7 +432,7 @@ export class Canvas {
       this.previewShape = new Konva.Text({
         x: this.startPoint.x,
         y: this.startPoint.y,
-        text: 'Your text here',
+        text: 'Your text hereee',
         fontSize: previewFontSize,
         fontFamily: 'Arial',
         fill: state.color,
@@ -695,7 +695,7 @@ export class Canvas {
           opacity: 1,
           x: this.startPoint.x,
           y: this.startPoint.y,
-          text: 'Your text here',
+          text: 'Your text hereee',
           fontSize,
           fontFamily: 'Arial',
         } as TextAnnotation;
@@ -717,7 +717,7 @@ export class Canvas {
             y: rect.y,
             width: rect.width,
             height: rect.height,
-            text: 'Your text here',
+            text: 'Your text hereee',
             fontSize: effectiveFontSize,
             fontFamily: 'Arial',
             strokeWidth: this.getScaledStrokeWidth(),
