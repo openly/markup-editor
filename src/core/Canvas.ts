@@ -31,7 +31,10 @@ export class Canvas {
 
   private container: HTMLElement;
   private store: Store;
-  // Auto-height: shrink the host container to fit the image aspect ratio.
+  // Auto-height (used when the editor is embedded responsively, e.g. the flo-ui
+  // review): shrink the host to the image aspect ratio AND render the image like
+  // a plain object-fit:contain, top-anchored <img> on a transparent background,
+  // so it lines up with a plain image viewer shown beside it.
   private autoHeight = false;
   private hostContainer: HTMLElement | null = null;
   private hostMaxHeight = 0;
@@ -89,10 +92,13 @@ export class Canvas {
     this.autoHeight = autoHeight;
 
     if (autoHeight) {
+      // Transparent letterbox + top-anchored image (see .me-autoheight CSS).
+      const root = this.container.closest('.markup-editor') as HTMLElement | null;
+      root?.classList.add('me-autoheight');
+
       // The host is the element the editor was mounted into (parent of the
       // .markup-editor root). Capture its initial height as the cap we never
       // grow past — we only shrink to remove wasted space around the image.
-      const root = this.container.closest('.markup-editor') as HTMLElement | null;
       this.hostContainer = (root?.parentElement as HTMLElement) || null;
       if (this.hostContainer) {
         // Persist the original (unshrunk) height so a re-init while the host is
@@ -1368,9 +1374,12 @@ export class Canvas {
   fitToScreen(): void {
     if (!this.imageElement) return;
 
-    // When the container is sized to the image, fill it flush with no padding
-    // and allow upscaling so there's no gap between canvas and image.
-    const padding = this.fitFill ? 0 : 10;
+    // In auto-height (review) mode, or when the container is already sized to the
+    // image (fitFill), render like a plain object-fit:contain <img>: fill the box
+    // flush with no padding and allow upscaling so there's no gap between canvas
+    // and image.
+    const containFill = this.autoHeight || this.fitFill;
+    const padding = containFill ? 0 : 10;
     const stageWidth = this.stage.width();
     const stageHeight = this.stage.height();
     const origWidth = this.imageElement.width;
@@ -1385,13 +1394,17 @@ export class Canvas {
 
     const scaleX = (stageWidth - padding * 2) / imageWidth;
     const scaleY = (stageHeight - padding * 2) / imageHeight;
-    const scale = this.fitFill ? Math.min(scaleX, scaleY) : Math.min(scaleX, scaleY, 1);
+    const scale = containFill ? Math.min(scaleX, scaleY) : Math.min(scaleX, scaleY, 1);
 
     // When rotated, the bounding box shifts in layer coords due to offset-based rotation
     const bbLeft = isRotated ? (origWidth - origHeight) / 2 : 0;
     const bbTop = isRotated ? (origHeight - origWidth) / 2 : 0;
     const x = (stageWidth - imageWidth * scale) / 2 - bbLeft * scale;
-    const y = (stageHeight - imageHeight * scale) / 2 - bbTop * scale;
+    // Auto-height anchors the image to the TOP (object-position: top); otherwise
+    // it stays vertically centred.
+    const y = this.autoHeight
+      ? padding - bbTop * scale
+      : (stageHeight - imageHeight * scale) / 2 - bbTop * scale;
 
     this.store.setScale(scale);
     this.store.setPosition({ x, y });
