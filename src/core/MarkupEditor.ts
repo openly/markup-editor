@@ -750,17 +750,20 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     gridLayer.visible(false);
     const { wasVisible: transformerWasVisible } = this.canvas.hideTransformer();
 
-    const dataUrl = stage.toDataURL({
-      mimeType: format === 'png' ? 'image/png' : 'image/jpeg',
-      quality,
+    const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
+
+    // Render the full-resolution frame to an offscreen canvas. This part is
+    // synchronous but cheap (~1ms — the image is already decoded). The costly
+    // step is the encode, which we do asynchronously below.
+    const canvas = stage.toCanvas({
       x: 0,
       y: 0,
       width: dims.width,
       height: dims.height,
       pixelRatio: 1,
-    });
+    }) as HTMLCanvasElement;
 
-    // Restore original state
+    // Restore original state immediately — the snapshot is already captured.
     if (previousSelectedId) {
       this.store.selectAnnotation(previousSelectedId);
     }
@@ -770,6 +773,35 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     stage.height(originalHeight);
     stage.scale(originalScale);
     stage.position(originalPosition);
+
+    // Encode asynchronously via toBlob + FileReader instead of the synchronous
+    // stage.toDataURL(). On a high-resolution photo toDataURL blocks the main
+    // thread for hundreds of ms (JPEG encode + base64 of a real photograph),
+    // which janks the next annotation. toBlob offloads the encode and FileReader
+    // does the base64 off the main thread, cutting the block ~10x. Same data-URL
+    // output, so callers/contract are unchanged.
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            // Some browsers may return null (e.g. tainted canvas) — fall back to
+            // the synchronous path so export still works.
+            try {
+              resolve(canvas.toDataURL(mimeType, quality));
+            } catch (err) {
+              reject(err);
+            }
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        },
+        mimeType,
+        quality
+      );
+    });
 
     this.emit('export', dataUrl, format);
     this.options.onExport?.(dataUrl, format);
