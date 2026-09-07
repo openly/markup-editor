@@ -35,6 +35,7 @@ export class Canvas {
   private autoHeight = false;
   private hostContainer: HTMLElement | null = null;
   private hostMaxHeight = 0;
+  private lastObservedContainerWidth = -1;
   private stage: Konva.Stage;
   private imageLayer: Konva.Layer;
   private gridLayer: Konva.Layer;
@@ -137,7 +138,19 @@ export class Canvas {
     this.setupStoreListeners();
 
     // Handle resize
-    const resizeObserver = new ResizeObserver(() => {
+    const resizeObserver = new ResizeObserver((entries) => {
+      // updateCanvasHeight() below writes to hostContainer's height, which
+      // (via the flex:1 chain up to .markup-editor { height: 100% }) cascades
+      // back down and changes this.container's own height — re-triggering
+      // this same observer. That self-triggered re-entry never changes width,
+      // so skip it here; only a genuine width change needs re-processing.
+      // Without this guard the container/host height ping-pongs across a
+      // couple of frames and the browser reports "ResizeObserver loop
+      // completed with undelivered notifications".
+      const width = entries[0]?.contentRect.width ?? this.container.clientWidth;
+      if (width === this.lastObservedContainerWidth) return;
+      this.lastObservedContainerWidth = width;
+
       // Adjust container height to the image on responsive widths first so the
       // stage picks up the new height, then re-fit the image into it.
       this.updateCanvasHeight();
