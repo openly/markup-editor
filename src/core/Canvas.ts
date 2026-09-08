@@ -48,6 +48,12 @@ export class Canvas {
   private imageNode: Konva.Image | null = null;
   private imageElement: HTMLImageElement | null = null;
 
+  // Cached base-image render for export. Rasterizing the (possibly 51MP) source
+  // image is the dominant cost of an export; it only changes when the image,
+  // rotation, or output resolution changes, so we cache it keyed on those and
+  // recompute only when the key changes. See buildExportCanvas.
+  private baseExportCache: { key: string; canvas: HTMLCanvasElement } | null = null;
+
   // Multi-overlay
   private overlayNodes: Map<string, Konva.Image> = new Map();
 
@@ -2341,6 +2347,60 @@ export class Canvas {
   getImageDimensions(): { width: number; height: number } | null {
     if (!this.imageElement) return null;
     return { width: this.imageElement.width, height: this.imageElement.height };
+  }
+
+  /** True while the user is actively drawing an annotation (pointer down). */
+  isBusy(): boolean {
+    return this.isDrawing;
+  }
+
+  // Render the export frame at the given pixelRatio by compositing the cached
+  // base image with the overlay and annotation layers. Compositing this way
+  // avoids re-rasterizing the full-resolution source image on every export
+  // (~750ms on a 51MP photo) — the base is cached and reused, so a second and
+  // subsequent exports only pay for the (cheap, vector) annotation layer.
+  //
+  // Assumes the caller has already put the stage into export pose (scale 1,
+  // origin 0, size = native image dims) and hidden the transformer/grid, exactly
+  // as MarkupEditor.renderAndEncode does — the layers are captured with the same
+  // rect and pixelRatio so they align pixel-for-pixel with stage.toCanvas.
+  buildExportCanvas(pixelRatio: number): HTMLCanvasElement {
+    const dims = this.getImageDimensions();
+    if (!dims) throw new Error('No image loaded');
+
+    const rect = { x: 0, y: 0, width: dims.width, height: dims.height, pixelRatio };
+
+    // (Re)build the cached base image render only when the source, rotation or
+    // output resolution has changed.
+    const key = [
+      this.imageElement?.src ?? '',
+      this.imageNode?.rotation() ?? 0,
+      dims.width,
+      dims.height,
+      pixelRatio,
+    ].join('|');
+    if (!this.baseExportCache || this.baseExportCache.key !== key) {
+      this.baseExportCache = {
+        key,
+        canvas: this.imageLayer.toCanvas(rect) as HTMLCanvasElement,
+      };
+    }
+
+    const out = document.createElement('canvas');
+    out.width = Math.round(dims.width * pixelRatio);
+    out.height = Math.round(dims.height * pixelRatio);
+    const ctx = out.getContext('2d');
+    if (!ctx) {
+      // Fallback to the correct-but-slow path if 2D context is unavailable.
+      return this.stage.toCanvas(rect) as HTMLCanvasElement;
+    }
+
+    ctx.drawImage(this.baseExportCache.canvas, 0, 0);
+    if (this.overlayLayer.visible() && this.overlayLayer.getChildren().length > 0) {
+      ctx.drawImage(this.overlayLayer.toCanvas(rect) as HTMLCanvasElement, 0, 0);
+    }
+    ctx.drawImage(this.annotationLayer.toCanvas(rect) as HTMLCanvasElement, 0, 0);
+    return out;
   }
 
   destroy(): void {
