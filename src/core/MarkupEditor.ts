@@ -24,6 +24,22 @@ import { getTheme, applyTheme, watchSystemTheme } from '../themes';
 import { uid } from '../utils/uid';
 import { EventEmitter } from '../utils/events';
 
+// Coalesce/defer window for exportImage. Hosts call exportImage on every
+// annotation change; on a high-resolution photo the full-res render blocks the
+// main thread long enough to jank the *next* mark. We wait this long after the
+// last request (and until the user lifts the pointer) before rendering once, so
+// bursts of marks never each trigger a render. See exportImage.
+const EXPORT_IDLE_DELAY = 400;
+
+// Cap the exported image's long edge. The render (stage.toCanvas) cost scales
+// with the *output* pixel count, so rasterizing a 51MP photo at native size
+// blocks the main thread ~2s per export; capping the long edge to this many
+// pixels rasterizes far fewer pixels (~250ms at 3000px) while staying sharp
+// enough for an annotation/review artifact. The pixel ratio scales the image
+// and annotations together, so annotation positions stay correct. Set to 0 to
+// export at native resolution.
+const EXPORT_MAX_DIMENSION = 3000;
+
 export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
   private container: HTMLElement;
   private store: Store;
@@ -34,6 +50,15 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
   private unwatchTheme?: () => void;
   private plugins: MarkupPlugin[] = [];
   private preserveAnnotations: boolean;
+
+  // Deferred-export state (see exportImage / flushDeferredExport)
+  private exportIdleTimer: ReturnType<typeof setTimeout> | null = null;
+  private exportWaiters: Array<{
+    resolve: (dataUrl: string) => void;
+    reject: (err: unknown) => void;
+  }> = [];
+  private latestExportArgs: { format: 'png' | 'jpeg'; quality: number } | null =
+    null;
 
   /** Drop all annotation state preserved across editor instances. */
   static clearPreservedAnnotations(): void {
@@ -463,6 +488,11 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
   // Public API implementation
 
   destroy(): void {
+    // Flush any pending deferred export before tearing down, so a mark made
+    // right before close still reaches the host. The toCanvas snapshot inside
+    // renderAndEncode is synchronous and runs before the stage is destroyed
+    // below; the async encode then finishes on the detached canvas.
+    this.flushDeferredExport();
     this.persistAllImageStates();
     this.emit('destroy');
     this.plugins.forEach((plugin) => plugin.uninstall?.(this));
@@ -720,23 +750,90 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
   }
 
   // Export
-  async exportImage(format: 'png' | 'jpeg', quality = 0.92): Promise<string> {
+  //
+  // Hosts typically call this on every annotation change and save the result.
+  // The render (stage.toCanvas) is synchronous and, on a high-resolution photo,
+  // blocks the main thread long enough to stall the next mark. Two things keep
+  // it off the marking hot path: (1) we COALESCE rapid calls and DEFER the
+  // render until the user goes idle (pointer up + a short debounce), rendering
+  // once and resolving every pending call with that single result; (2) the
+  // render is capped to EXPORT_MAX_DIMENSION so even that one render is cheap.
+  // A pending export is flushed synchronously in destroy() so a mark made right
+  // before the editor closes is not lost.
+  exportImage(format: 'png' | 'jpeg', quality = 0.92): Promise<string> {
+    if (!this.canvas) return Promise.reject(new Error('No canvas available'));
+
+    return new Promise<string>((resolve, reject) => {
+      this.exportWaiters.push({ resolve, reject });
+      this.latestExportArgs = { format, quality };
+      this.scheduleDeferredExport();
+    });
+  }
+
+  private scheduleDeferredExport(): void {
+    if (this.exportIdleTimer) clearTimeout(this.exportIdleTimer);
+    this.exportIdleTimer = setTimeout(() => {
+      this.exportIdleTimer = null;
+      // Never render mid-stroke — if the user is drawing, wait for them to
+      // finish so the heavy render never lands on top of an active mark.
+      if (this.canvas?.isBusy()) {
+        this.scheduleDeferredExport();
+        return;
+      }
+      this.flushDeferredExport();
+    }, EXPORT_IDLE_DELAY);
+  }
+
+  // Render once and resolve every export request that has queued up since the
+  // last render. Safe to call synchronously from destroy(): renderAndEncode's
+  // toCanvas snapshot runs before its first await, so it is captured before the
+  // stage is torn down; the async encode then completes on the detached canvas.
+  private flushDeferredExport(): void {
+    if (this.exportIdleTimer) {
+      clearTimeout(this.exportIdleTimer);
+      this.exportIdleTimer = null;
+    }
+    if (this.exportWaiters.length === 0) return;
+
+    const waiters = this.exportWaiters;
+    this.exportWaiters = [];
+    const { format, quality } = this.latestExportArgs ?? {
+      format: 'jpeg',
+      quality: 0.92,
+    };
+
+    this.renderAndEncode(format, quality)
+      .then((dataUrl) => waiters.forEach((w) => w.resolve(dataUrl)))
+      .catch((err) => waiters.forEach((w) => w.reject(err)));
+  }
+
+  private async renderAndEncode(
+    format: 'png' | 'jpeg',
+    quality: number
+  ): Promise<string> {
     if (!this.canvas) throw new Error('No canvas available');
 
     const stage = this.canvas.getStage();
     const dims = this.canvas.getImageDimensions();
     if (!dims) throw new Error('No image loaded');
 
+    // Cap the output resolution so the render stays cheap on huge photos.
+    const longEdge = Math.max(dims.width, dims.height);
+    const exportPixelRatio =
+      EXPORT_MAX_DIMENSION && longEdge > EXPORT_MAX_DIMENSION
+        ? EXPORT_MAX_DIMENSION / longEdge
+        : 1;
+
     const originalScale = { x: stage.scaleX(), y: stage.scaleY() };
     const originalPosition = { x: stage.x(), y: stage.y() };
-    const originalWidth = stage.width();
-    const originalHeight = stage.height();
 
-    // Temporarily set stage to original image dimensions with no transform
+    // Neutralize the on-screen fit transform so layers capture at native image
+    // coordinates. We deliberately do NOT resize the stage to native dimensions:
+    // buildExportCanvas captures each layer with an explicit rect + pixelRatio,
+    // so the stage size is irrelevant — and resizing the on-screen stage to a
+    // 51MP canvas is what used to block the main thread ~600ms per export.
     stage.scale({ x: 1, y: 1 });
     stage.position({ x: 0, y: 0 });
-    stage.width(dims.width);
-    stage.height(dims.height);
 
     // Deselect annotations to hide handles/guide lines during export
     const previousSelectedId = this.store.getState().selectedId;
@@ -750,26 +847,52 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     gridLayer.visible(false);
     const { wasVisible: transformerWasVisible } = this.canvas.hideTransformer();
 
-    const dataUrl = stage.toDataURL({
-      mimeType: format === 'png' ? 'image/png' : 'image/jpeg',
-      quality,
-      x: 0,
-      y: 0,
-      width: dims.width,
-      height: dims.height,
-      pixelRatio: 1,
-    });
+    const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
 
-    // Restore original state
+    // Render the frame to an offscreen canvas at the capped resolution.
+    // buildExportCanvas composites a cached base-image render with the
+    // annotation/overlay layers, so re-rasterizing the huge source image only
+    // happens once (not on every mark). The pixelRatio scales image and
+    // annotations together, keeping annotation positions correct.
+    const canvas = this.canvas.buildExportCanvas(exportPixelRatio);
+
+    // Restore original state immediately — the snapshot is already captured.
     if (previousSelectedId) {
       this.store.selectAnnotation(previousSelectedId);
     }
     if (transformerWasVisible) this.canvas.showTransformer();
     gridLayer.visible(gridWasVisible);
-    stage.width(originalWidth);
-    stage.height(originalHeight);
     stage.scale(originalScale);
     stage.position(originalPosition);
+
+    // Encode asynchronously via toBlob + FileReader instead of the synchronous
+    // stage.toDataURL(). On a high-resolution photo toDataURL blocks the main
+    // thread for hundreds of ms (JPEG encode + base64 of a real photograph),
+    // which janks the next annotation. toBlob offloads the encode and FileReader
+    // does the base64 off the main thread, cutting the block ~10x. Same data-URL
+    // output, so callers/contract are unchanged.
+    const dataUrl = await new Promise<string>((resolve, reject) => {
+      canvas.toBlob(
+        (blob) => {
+          if (!blob) {
+            // Some browsers may return null (e.g. tainted canvas) — fall back to
+            // the synchronous path so export still works.
+            try {
+              resolve(canvas.toDataURL(mimeType, quality));
+            } catch (err) {
+              reject(err);
+            }
+            return;
+          }
+          const reader = new FileReader();
+          reader.onload = () => resolve(reader.result as string);
+          reader.onerror = () => reject(reader.error);
+          reader.readAsDataURL(blob);
+        },
+        mimeType,
+        quality
+      );
+    });
 
     this.emit('export', dataUrl, format);
     this.options.onExport?.(dataUrl, format);
