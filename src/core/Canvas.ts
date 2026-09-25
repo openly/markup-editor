@@ -905,8 +905,33 @@ export class Canvas {
     this.annotationLayer.batchDraw();
   }
 
+  /**
+   * Force high-quality image resampling on the raster layers.
+   *
+   * Konva only ever sets `imageSmoothingEnabled` on a layer's 2D context (see
+   * Konva's Layer._setSmoothEnabled) and leaves `imageSmoothingQuality` at the
+   * browser default of 'low'. At the fit view a high-resolution source image is
+   * drawn scaled down to ~10%, and a 'low' (2x2 bilinear) downscale can't
+   * low-pass fine textures like woven fabric — producing visible moiré. 'high'
+   * uses a proper multi-tap filter and removes it.
+   *
+   * Must be re-applied before each draw: Konva resets the whole canvas context
+   * (losing this flag) whenever a layer/stage is resized, because setWidth/
+   * setHeight reassign `canvas.width` (see Konva's Canvas.setSize).
+   */
+  private setHighQualitySmoothing(...layers: Konva.Layer[]): void {
+    for (const layer of layers) {
+      const ctx = (layer.getContext() as unknown as { _context?: CanvasRenderingContext2D })._context;
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+      }
+    }
+  }
+
   private updateTransform(): void {
     const state = this.store.getState();
+    this.setHighQualitySmoothing(this.imageLayer, this.overlayLayer);
     this.stage.scale({ x: state.scale, y: state.scale });
     this.stage.position(state.position);
     this.stage.batchDraw();
@@ -1066,6 +1091,7 @@ export class Canvas {
         node.visible(true);
       }
     }
+    this.setHighQualitySmoothing(this.overlayLayer);
     this.overlayLayer.batchDraw();
     if (this.compareMode) {
       this.refreshCompareView();
@@ -1212,6 +1238,7 @@ export class Canvas {
         stage.position({ x, y });
         stage.batchDraw();
       };
+      this.setHighQualitySmoothing(leftLayer, rightLayer);
 
       if (this.imageElement) {
         fitStage(this.compareLeftStage, this.imageElement);
@@ -1270,6 +1297,7 @@ export class Canvas {
         this.compareLeftStage.height(lh);
         this.compareRightStage.width(rightCanvas.offsetWidth);
         this.compareRightStage.height(rightCanvas.offsetHeight);
+        this.setHighQualitySmoothing(leftLayer, rightLayer);
         if (this.imageElement) {
           fitStage(this.compareLeftStage, this.imageElement);
           fitStage(this.compareRightStage, this.imageElement);
