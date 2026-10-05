@@ -67,6 +67,9 @@ export class Canvas {
   private compareRightStage: Konva.Stage | null = null;
   private compareResizeObserver: ResizeObserver | null = null;
 
+  private resizeObserver: ResizeObserver | null = null;
+  private sizeWatchdog: number | null = null;
+
   // Drawing state
   private loadingOverlay: HTMLElement | null = null;
 
@@ -149,15 +152,23 @@ export class Canvas {
     this.setupStoreListeners();
 
     // Handle resize
-    const resizeObserver = new ResizeObserver(() => {
-      // Adjust container height to the image on responsive widths first so the
-      // stage picks up the new height, then re-fit the image into it.
-      this.updateCanvasHeight();
-      this.stage.width(this.container.offsetWidth);
-      this.stage.height(this.container.offsetHeight);
-      this.fitToScreen();
-    });
-    resizeObserver.observe(this.container);
+    this.resizeObserver = new ResizeObserver(() => this.syncStageToContainer());
+    this.resizeObserver.observe(this.container);
+
+    // Watchdog: embedding layouts can change size in ways that slip past the
+    // ResizeObserver (ancestor reflows settling while the image is still
+    // decoding, re-inits mid-layout, clipped overflow keeping the box size
+    // constant). The stage must never persistently disagree with its
+    // container, so reconcile on a slow heartbeat as a safety net.
+    this.sizeWatchdog = window.setInterval(() => {
+      if (!this.imageElement) return;
+      const w = this.container.offsetWidth;
+      const h = this.container.offsetHeight;
+      if (w > 0 && h > 0 && (this.stage.width() !== w || this.stage.height() !== h)) {
+        this.syncStageToContainer();
+        this.renderGrid();
+      }
+    }, 500);
 
     // Create loading overlay (appended after stage so it renders on top)
     this.loadingOverlay = document.createElement('div');
@@ -184,7 +195,7 @@ export class Canvas {
       const direction = e.evt.deltaY > 0 ? -1 : 1;
       const factor = 1.1;
       const newScale = direction > 0 ? oldScale * factor : oldScale / factor;
-      const clampedScale = Math.max(0.1, Math.min(5, newScale));
+      const clampedScale = this.store.clampScale(newScale);
 
       const newPos = {
         x: pointer.x - mousePointTo.x * clampedScale,
@@ -971,13 +982,23 @@ export class Canvas {
         this.imageLayer.moveToBottom();
         this.imageLayer.batchDraw();
 
-        // Size the container to the image on responsive widths, then fit.
-        this.updateCanvasHeight();
-        this.stage.width(this.container.offsetWidth);
-        this.stage.height(this.container.offsetHeight);
-        // Fit to screen (accounts for rotation)
-        this.fitToScreen();
+        // Size the container to the image on responsive widths, then fit
+        // (accounts for rotation).
+        this.syncStageToContainer();
         this.renderGrid();
+        // Settle check: the surrounding layout may still be moving while a
+        // large image decodes, so verify the fit against the final size on the
+        // next frame and re-fit if it changed under us.
+        requestAnimationFrame(() => {
+          if (
+            this.imageElement === img &&
+            (this.stage.width() !== this.container.offsetWidth ||
+              this.stage.height() !== this.container.offsetHeight)
+          ) {
+            this.syncStageToContainer();
+            this.renderGrid();
+          }
+        });
         resolve();
       };
       img.onerror = () => {
@@ -1019,10 +1040,7 @@ export class Canvas {
       this.annotationLayer.batchDraw();
       this.previewLayer.batchDraw();
       // Rotation swaps aspect ratio — re-sync container height before fitting.
-      this.updateCanvasHeight();
-      this.stage.width(this.container.offsetWidth);
-      this.stage.height(this.container.offsetHeight);
-      this.fitToScreen();
+      this.syncStageToContainer();
     }
   }
 
@@ -1252,7 +1270,7 @@ export class Canvas {
           };
 
           const direction = e.evt.deltaY > 0 ? -1 : 1;
-          const newScale = Math.max(0.1, Math.min(5, direction > 0 ? oldScale * 1.1 : oldScale / 1.1));
+          const newScale = this.store.clampScale(direction > 0 ? oldScale * 1.1 : oldScale / 1.1);
           const newPos = {
             x: pointer.x - mousePointTo.x * newScale,
             y: pointer.y - mousePointTo.y * newScale,
@@ -1405,6 +1423,21 @@ export class Canvas {
     this.fitFill = Math.abs(finalMeMain - hugHeight) <= 2;
   }
 
+  /**
+   * Re-sync the stage to the container's current size and re-fit the image.
+   * Runs on container resizes, after image load, and from the size watchdog —
+   * the container can change size while a large image is still decoding, and
+   * the fit must always reflect the final layout.
+   */
+  private syncStageToContainer(): void {
+    // Adjust container height to the image on responsive widths first so the
+    // stage picks up the new height, then re-fit the image into it.
+    this.updateCanvasHeight();
+    this.stage.width(this.container.offsetWidth);
+    this.stage.height(this.container.offsetHeight);
+    this.fitToScreen();
+  }
+
   fitToScreen(): void {
     if (!this.imageElement) return;
 
@@ -1440,6 +1473,11 @@ export class Canvas {
       ? padding - bbTop * scale
       : (stageHeight - imageHeight * scale) / 2 - bbTop * scale;
 
+    // A very high-resolution image in a small container can need a fit scale
+    // below the normal 0.1 zoom floor — lower the floor so the fit is always
+    // representable, otherwise the clamp renders the image larger than the
+    // canvas (zoomed-in, cropped, misaligned with neighbouring viewers).
+    this.store.setMinScale(scale);
     this.store.setScale(scale);
     this.store.setPosition({ x, y });
     this.updateTransform();
@@ -1452,7 +1490,7 @@ export class Canvas {
   zoomBy(factor: number): void {
     const state = this.store.getState();
     const oldScale = state.scale;
-    const newScale = Math.max(0.1, Math.min(5, oldScale * factor));
+    const newScale = this.store.clampScale(oldScale * factor);
     if (newScale === oldScale) return;
 
     // Keep the point at the viewport centre fixed while scaling.
@@ -2432,6 +2470,14 @@ export class Canvas {
   }
 
   destroy(): void {
+    if (this.sizeWatchdog !== null) {
+      window.clearInterval(this.sizeWatchdog);
+      this.sizeWatchdog = null;
+    }
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.compareResizeObserver?.disconnect();
+    this.compareResizeObserver = null;
     this.stage.destroy();
   }
 }
