@@ -38,7 +38,6 @@ export class Canvas {
   private autoHeight = false;
   private hostContainer: HTMLElement | null = null;
   private hostMaxHeight = 0;
-  private lastObservedContainerWidth = -1;
   private stage: Konva.Stage;
   private imageLayer: Konva.Layer;
   private gridLayer: Konva.Layer;
