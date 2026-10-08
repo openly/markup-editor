@@ -69,6 +69,10 @@ export class Canvas {
 
   private resizeObserver: ResizeObserver | null = null;
   private sizeWatchdog: number | null = null;
+  // Measured width of a classic (space-taking) scrollbar. ~17px on Windows,
+  // 0 with macOS overlay scrollbars. Used to damp the auto-height oscillation
+  // (see updateCanvasHeight). Measured once, lazily.
+  private scrollbarWidthCache: number | null = null;
 
   // Drawing state
   private loadingOverlay: HTMLElement | null = null;
@@ -1348,6 +1352,28 @@ export class Canvas {
     this.annotationLayer.batchDraw();
   }
 
+  /**
+   * Width taken up by a classic (space-taking) vertical scrollbar in this
+   * environment. ~17px on Windows and when "always show scrollbars" is on;
+   * 0 with macOS overlay scrollbars. Measured once against a throwaway probe.
+   */
+  private getScrollbarWidth(): number {
+    if (this.scrollbarWidthCache !== null) return this.scrollbarWidthCache;
+    let width = 0;
+    try {
+      const probe = document.createElement('div');
+      probe.style.cssText =
+        'position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;visibility:hidden;';
+      document.body.appendChild(probe);
+      width = probe.offsetWidth - probe.clientWidth;
+      probe.remove();
+    } catch {
+      width = 0;
+    }
+    this.scrollbarWidthCache = width;
+    return width;
+  }
+
   /** Intrinsic content height of a flex element (ignores stretch to siblings). */
   private measureContentHeight(el: HTMLElement): number {
     const cs = getComputedStyle(el);
@@ -1413,13 +1439,39 @@ export class Canvas {
     const cap = this.hostMaxHeight || root.clientHeight;
     const idealHost = Math.min(cap, Math.round(chrome + idealMeMain));
 
-    if (Math.round(this.hostContainer.clientHeight) !== idealHost) {
+    const currentHost = Math.round(this.hostContainer.clientHeight);
+
+    // Oscillation deadband. Writing the host height can toggle a vertical
+    // scrollbar on an ancestor (e.g. a modal body with overflow:auto). Where
+    // scrollbars take layout space — Windows, and anywhere "always show
+    // scrollbars" is on — that steals `canvasWidth`, which shrinks `hugHeight`,
+    // which shrinks `idealHost`, which removes the scrollbar, which restores the
+    // width… a bistable A<->B loop that renders as the panel *shaking* (the box
+    // flips heights every frame). macOS overlay scrollbars take no width, so the
+    // loop never starts there — which is why this only reproduces on Windows.
+    //
+    // The two states differ by exactly one scrollbar-width's worth of height:
+    // Δheight = scrollbarWidth / aspect. Ignore adjustments that small so the
+    // layout settles with at most that much slack (invisible letterboxing).
+    // The guard is memoryless — a genuine resize moves `idealHost` by far more
+    // than the deadband, so it still applies and can't get stuck.
+    const aspect = imgW / imgH;
+    const scrollbarWobble = this.getScrollbarWidth() / aspect;
+    // Always kill ≥1px jitter (fractional device-pixel ratios on Windows
+    // scaling), and clamp so absurd aspect data can't balloon the deadband.
+    const deadband = Math.min(200, Math.max(2, Math.ceil(scrollbarWobble) + 1));
+
+    const applyHeight = Math.abs(currentHost - idealHost) > deadband;
+    if (applyHeight) {
       this.hostContainer.style.height = `${idealHost}px`;
     }
 
     // Fill the canvas flush (no padding) only when it ends up matching the
-    // image aspect; otherwise the image is letterboxed and centered.
-    const finalMeMain = idealHost - chrome;
+    // image aspect; otherwise the image is letterboxed and centered. Measure
+    // against the height actually applied (the deadband may hold us short of
+    // idealHost), so the letterbox decision matches what's on screen.
+    const appliedHost = applyHeight ? idealHost : currentHost;
+    const finalMeMain = appliedHost - chrome;
     this.fitFill = Math.abs(finalMeMain - hugHeight) <= 2;
   }
 
@@ -1616,7 +1668,22 @@ export class Canvas {
       node.scaleX(1);
       node.scaleY(1);
 
-      if (annotation.type === 'callout' || annotation.type === 'caption') {
+      if (annotation.type === 'pen' || annotation.type === 'highlight') {
+        // The transformer scales the Line node (and offsets it for anchors that
+        // pivot off the opposite corner). Bake both into the stored points so the
+        // resize survives a re-render — otherwise the fresh Line rebuilt from the
+        // original points on the next render (e.g. switching images) loses it.
+        const offsetX = node.x();
+        const offsetY = node.y();
+        node.x(0);
+        node.y(0);
+        const pts = (annotation as PenAnnotation).points;
+        const newPoints: number[] = [];
+        for (let i = 0; i < pts.length; i += 2) {
+          newPoints.push(offsetX + pts[i] * scaleX, offsetY + pts[i + 1] * scaleY);
+        }
+        this.store.updateAnnotation(image.id, annotation.id, { points: newPoints });
+      } else if (annotation.type === 'callout' || annotation.type === 'caption') {
         this.store.updateAnnotation(image.id, annotation.id, {
           x: node.x(),
           y: node.y(),
@@ -1674,6 +1741,7 @@ export class Canvas {
         line.on('mousedown touchstart', handleClick);
         line.on('dragmove', handleDragMove);
         line.on('dragend', handleDragEnd);
+        line.on('transformend', handleTransformEnd);
         return line;
       }
 
