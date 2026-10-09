@@ -69,6 +69,12 @@ export class Canvas {
 
   private resizeObserver: ResizeObserver | null = null;
   private sizeWatchdog: number | null = null;
+  // Device pixel ratio the layer canvases were last built for. Konva samples
+  // window.devicePixelRatio once per page load and bakes it into every canvas,
+  // but browser zoom changes the live value — see syncPixelRatio().
+  private renderedDpr: number = window.devicePixelRatio || 1;
+  private dprQuery: MediaQueryList | null = null;
+  private readonly onDprChange = () => this.syncPixelRatio();
   // Measured width of a classic (space-taking) scrollbar. ~17px on Windows,
   // 0 with macOS overlay scrollbars. Used to damp the auto-height oscillation
   // (see updateCanvasHeight). Measured once, lazily.
@@ -164,7 +170,15 @@ export class Canvas {
     // decoding, re-inits mid-layout, clipped overflow keeping the box size
     // constant). The stage must never persistently disagree with its
     // container, so reconcile on a slow heartbeat as a safety net.
+    // Keep the backing-store resolution in step with browser zoom / display
+    // changes. matchMedia fires exactly once per DPR change (the query only
+    // matches the current ratio), so the listener re-arms itself; the size
+    // watchdog below doubles as a fallback poll for browsers where resolution
+    // media queries are unreliable.
+    this.watchDpr();
+
     this.sizeWatchdog = window.setInterval(() => {
+      this.syncPixelRatio();
       if (!this.imageElement) return;
       const w = this.container.offsetWidth;
       const h = this.container.offsetHeight;
@@ -929,6 +943,41 @@ export class Canvas {
         ctx.imageSmoothingQuality = 'high';
       }
     }
+  }
+
+  private watchDpr(): void {
+    this.dprQuery?.removeEventListener('change', this.onDprChange);
+    this.dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    this.dprQuery.addEventListener('change', this.onDprChange);
+  }
+
+  /**
+   * Rebuild the layer canvases when window.devicePixelRatio changes (browser
+   * zoom, or the window moving to a display with different scaling).
+   *
+   * Konva memoizes the page-load devicePixelRatio (see Konva's
+   * getDevicePixelRatio) and every canvas keeps that ratio for life, so after
+   * a browser zoom the backing store no longer matches the screen's device
+   * pixels and the compositor rescales the bitmap — visible as the image going
+   * slightly soft. setPixelRatio resizes each backing store, which resets its
+   * 2D context, so the smoothing flags must be re-applied before redrawing.
+   */
+  private syncPixelRatio(): void {
+    const dpr = window.devicePixelRatio || 1;
+    if (dpr === this.renderedDpr) return;
+    this.renderedDpr = dpr;
+    // Canvases created from here on (e.g. compare stages) pick up the new
+    // ratio too — Konva checks this global before its stale memoized value.
+    Konva.pixelRatio = dpr;
+    for (const stage of [this.stage, this.compareLeftStage, this.compareRightStage]) {
+      if (!stage) continue;
+      for (const layer of stage.getLayers()) {
+        layer.getCanvas().setPixelRatio(dpr);
+        this.setHighQualitySmoothing(layer);
+      }
+      stage.batchDraw();
+    }
+    this.watchDpr();
   }
 
   private updateTransform(): void {
@@ -2546,6 +2595,8 @@ export class Canvas {
     this.resizeObserver = null;
     this.compareResizeObserver?.disconnect();
     this.compareResizeObserver = null;
+    this.dprQuery?.removeEventListener('change', this.onDprChange);
+    this.dprQuery = null;
     this.stage.destroy();
   }
 }
