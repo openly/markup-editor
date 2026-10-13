@@ -67,6 +67,19 @@ export class Canvas {
   private compareRightStage: Konva.Stage | null = null;
   private compareResizeObserver: ResizeObserver | null = null;
 
+  private resizeObserver: ResizeObserver | null = null;
+  private sizeWatchdog: number | null = null;
+  // Device pixel ratio the layer canvases were last built for. Konva samples
+  // window.devicePixelRatio once per page load and bakes it into every canvas,
+  // but browser zoom changes the live value — see syncPixelRatio().
+  private renderedDpr: number = window.devicePixelRatio || 1;
+  private dprQuery: MediaQueryList | null = null;
+  private readonly onDprChange = () => this.syncPixelRatio();
+  // Measured width of a classic (space-taking) scrollbar. ~17px on Windows,
+  // 0 with macOS overlay scrollbars. Used to damp the auto-height oscillation
+  // (see updateCanvasHeight). Measured once, lazily.
+  private scrollbarWidthCache: number | null = null;
+
   // Drawing state
   private loadingOverlay: HTMLElement | null = null;
 
@@ -149,15 +162,31 @@ export class Canvas {
     this.setupStoreListeners();
 
     // Handle resize
-    const resizeObserver = new ResizeObserver(() => {
-      // Adjust container height to the image on responsive widths first so the
-      // stage picks up the new height, then re-fit the image into it.
-      this.updateCanvasHeight();
-      this.stage.width(this.container.offsetWidth);
-      this.stage.height(this.container.offsetHeight);
-      this.fitToScreen();
-    });
-    resizeObserver.observe(this.container);
+    this.resizeObserver = new ResizeObserver(() => this.syncStageToContainer());
+    this.resizeObserver.observe(this.container);
+
+    // Watchdog: embedding layouts can change size in ways that slip past the
+    // ResizeObserver (ancestor reflows settling while the image is still
+    // decoding, re-inits mid-layout, clipped overflow keeping the box size
+    // constant). The stage must never persistently disagree with its
+    // container, so reconcile on a slow heartbeat as a safety net.
+    // Keep the backing-store resolution in step with browser zoom / display
+    // changes. matchMedia fires exactly once per DPR change (the query only
+    // matches the current ratio), so the listener re-arms itself; the size
+    // watchdog below doubles as a fallback poll for browsers where resolution
+    // media queries are unreliable.
+    this.watchDpr();
+
+    this.sizeWatchdog = window.setInterval(() => {
+      this.syncPixelRatio();
+      if (!this.imageElement) return;
+      const w = this.container.offsetWidth;
+      const h = this.container.offsetHeight;
+      if (w > 0 && h > 0 && (this.stage.width() !== w || this.stage.height() !== h)) {
+        this.syncStageToContainer();
+        this.renderGrid();
+      }
+    }, 500);
 
     // Create loading overlay (appended after stage so it renders on top)
     this.loadingOverlay = document.createElement('div');
@@ -184,7 +213,7 @@ export class Canvas {
       const direction = e.evt.deltaY > 0 ? -1 : 1;
       const factor = 1.1;
       const newScale = direction > 0 ? oldScale * factor : oldScale / factor;
-      const clampedScale = Math.max(0.1, Math.min(5, newScale));
+      const clampedScale = this.store.clampScale(newScale);
 
       const newPos = {
         x: pointer.x - mousePointTo.x * clampedScale,
@@ -892,8 +921,68 @@ export class Canvas {
     this.annotationLayer.batchDraw();
   }
 
+  /**
+   * Force high-quality image resampling on the raster layers.
+   *
+   * Konva only ever sets `imageSmoothingEnabled` on a layer's 2D context (see
+   * Konva's Layer._setSmoothEnabled) and leaves `imageSmoothingQuality` at the
+   * browser default of 'low'. At the fit view a high-resolution source image is
+   * drawn scaled down to ~10%, and a 'low' (2x2 bilinear) downscale can't
+   * low-pass fine textures like woven fabric — producing visible moiré. 'high'
+   * uses a proper multi-tap filter and removes it.
+   *
+   * Must be re-applied before each draw: Konva resets the whole canvas context
+   * (losing this flag) whenever a layer/stage is resized, because setWidth/
+   * setHeight reassign `canvas.width` (see Konva's Canvas.setSize).
+   */
+  private setHighQualitySmoothing(...layers: Konva.Layer[]): void {
+    for (const layer of layers) {
+      const ctx = (layer.getContext() as unknown as { _context?: CanvasRenderingContext2D })._context;
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true;
+        ctx.imageSmoothingQuality = 'high';
+      }
+    }
+  }
+
+  private watchDpr(): void {
+    this.dprQuery?.removeEventListener('change', this.onDprChange);
+    this.dprQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio}dppx)`);
+    this.dprQuery.addEventListener('change', this.onDprChange);
+  }
+
+  /**
+   * Rebuild the layer canvases when window.devicePixelRatio changes (browser
+   * zoom, or the window moving to a display with different scaling).
+   *
+   * Konva memoizes the page-load devicePixelRatio (see Konva's
+   * getDevicePixelRatio) and every canvas keeps that ratio for life, so after
+   * a browser zoom the backing store no longer matches the screen's device
+   * pixels and the compositor rescales the bitmap — visible as the image going
+   * slightly soft. setPixelRatio resizes each backing store, which resets its
+   * 2D context, so the smoothing flags must be re-applied before redrawing.
+   */
+  private syncPixelRatio(): void {
+    const dpr = window.devicePixelRatio || 1;
+    if (dpr === this.renderedDpr) return;
+    this.renderedDpr = dpr;
+    // Canvases created from here on (e.g. compare stages) pick up the new
+    // ratio too — Konva checks this global before its stale memoized value.
+    Konva.pixelRatio = dpr;
+    for (const stage of [this.stage, this.compareLeftStage, this.compareRightStage]) {
+      if (!stage) continue;
+      for (const layer of stage.getLayers()) {
+        layer.getCanvas().setPixelRatio(dpr);
+        this.setHighQualitySmoothing(layer);
+      }
+      stage.batchDraw();
+    }
+    this.watchDpr();
+  }
+
   private updateTransform(): void {
     const state = this.store.getState();
+    this.setHighQualitySmoothing(this.imageLayer, this.overlayLayer);
     this.stage.scale({ x: state.scale, y: state.scale });
     this.stage.position(state.position);
     this.stage.batchDraw();
@@ -946,13 +1035,23 @@ export class Canvas {
         this.imageLayer.moveToBottom();
         this.imageLayer.batchDraw();
 
-        // Size the container to the image on responsive widths, then fit.
-        this.updateCanvasHeight();
-        this.stage.width(this.container.offsetWidth);
-        this.stage.height(this.container.offsetHeight);
-        // Fit to screen (accounts for rotation)
-        this.fitToScreen();
+        // Size the container to the image on responsive widths, then fit
+        // (accounts for rotation).
+        this.syncStageToContainer();
         this.renderGrid();
+        // Settle check: the surrounding layout may still be moving while a
+        // large image decodes, so verify the fit against the final size on the
+        // next frame and re-fit if it changed under us.
+        requestAnimationFrame(() => {
+          if (
+            this.imageElement === img &&
+            (this.stage.width() !== this.container.offsetWidth ||
+              this.stage.height() !== this.container.offsetHeight)
+          ) {
+            this.syncStageToContainer();
+            this.renderGrid();
+          }
+        });
         resolve();
       };
       img.onerror = () => {
@@ -994,10 +1093,7 @@ export class Canvas {
       this.annotationLayer.batchDraw();
       this.previewLayer.batchDraw();
       // Rotation swaps aspect ratio — re-sync container height before fitting.
-      this.updateCanvasHeight();
-      this.stage.width(this.container.offsetWidth);
-      this.stage.height(this.container.offsetHeight);
-      this.fitToScreen();
+      this.syncStageToContainer();
     }
   }
 
@@ -1053,6 +1149,7 @@ export class Canvas {
         node.visible(true);
       }
     }
+    this.setHighQualitySmoothing(this.overlayLayer);
     this.overlayLayer.batchDraw();
     if (this.compareMode) {
       this.refreshCompareView();
@@ -1199,6 +1296,7 @@ export class Canvas {
         stage.position({ x, y });
         stage.batchDraw();
       };
+      this.setHighQualitySmoothing(leftLayer, rightLayer);
 
       if (this.imageElement) {
         fitStage(this.compareLeftStage, this.imageElement);
@@ -1225,7 +1323,7 @@ export class Canvas {
           };
 
           const direction = e.evt.deltaY > 0 ? -1 : 1;
-          const newScale = Math.max(0.1, Math.min(5, direction > 0 ? oldScale * 1.1 : oldScale / 1.1));
+          const newScale = this.store.clampScale(direction > 0 ? oldScale * 1.1 : oldScale / 1.1);
           const newPos = {
             x: pointer.x - mousePointTo.x * newScale,
             y: pointer.y - mousePointTo.y * newScale,
@@ -1257,6 +1355,7 @@ export class Canvas {
         this.compareLeftStage.height(lh);
         this.compareRightStage.width(rightCanvas.offsetWidth);
         this.compareRightStage.height(rightCanvas.offsetHeight);
+        this.setHighQualitySmoothing(leftLayer, rightLayer);
         if (this.imageElement) {
           fitStage(this.compareLeftStage, this.imageElement);
           fitStage(this.compareRightStage, this.imageElement);
@@ -1300,6 +1399,28 @@ export class Canvas {
   showTransformer(): void {
     this.transformer.visible(true);
     this.annotationLayer.batchDraw();
+  }
+
+  /**
+   * Width taken up by a classic (space-taking) vertical scrollbar in this
+   * environment. ~17px on Windows and when "always show scrollbars" is on;
+   * 0 with macOS overlay scrollbars. Measured once against a throwaway probe.
+   */
+  private getScrollbarWidth(): number {
+    if (this.scrollbarWidthCache !== null) return this.scrollbarWidthCache;
+    let width = 0;
+    try {
+      const probe = document.createElement('div');
+      probe.style.cssText =
+        'position:absolute;top:-9999px;width:100px;height:100px;overflow:scroll;visibility:hidden;';
+      document.body.appendChild(probe);
+      width = probe.offsetWidth - probe.clientWidth;
+      probe.remove();
+    } catch {
+      width = 0;
+    }
+    this.scrollbarWidthCache = width;
+    return width;
   }
 
   /** Intrinsic content height of a flex element (ignores stretch to siblings). */
@@ -1367,14 +1488,55 @@ export class Canvas {
     const cap = this.hostMaxHeight || root.clientHeight;
     const idealHost = Math.min(cap, Math.round(chrome + idealMeMain));
 
-    if (Math.round(this.hostContainer.clientHeight) !== idealHost) {
+    const currentHost = Math.round(this.hostContainer.clientHeight);
+
+    // Oscillation deadband. Writing the host height can toggle a vertical
+    // scrollbar on an ancestor (e.g. a modal body with overflow:auto). Where
+    // scrollbars take layout space — Windows, and anywhere "always show
+    // scrollbars" is on — that steals `canvasWidth`, which shrinks `hugHeight`,
+    // which shrinks `idealHost`, which removes the scrollbar, which restores the
+    // width… a bistable A<->B loop that renders as the panel *shaking* (the box
+    // flips heights every frame). macOS overlay scrollbars take no width, so the
+    // loop never starts there — which is why this only reproduces on Windows.
+    //
+    // The two states differ by exactly one scrollbar-width's worth of height:
+    // Δheight = scrollbarWidth / aspect. Ignore adjustments that small so the
+    // layout settles with at most that much slack (invisible letterboxing).
+    // The guard is memoryless — a genuine resize moves `idealHost` by far more
+    // than the deadband, so it still applies and can't get stuck.
+    const aspect = imgW / imgH;
+    const scrollbarWobble = this.getScrollbarWidth() / aspect;
+    // Always kill ≥1px jitter (fractional device-pixel ratios on Windows
+    // scaling), and clamp so absurd aspect data can't balloon the deadband.
+    const deadband = Math.min(200, Math.max(2, Math.ceil(scrollbarWobble) + 1));
+
+    const applyHeight = Math.abs(currentHost - idealHost) > deadband;
+    if (applyHeight) {
       this.hostContainer.style.height = `${idealHost}px`;
     }
 
     // Fill the canvas flush (no padding) only when it ends up matching the
-    // image aspect; otherwise the image is letterboxed and centered.
-    const finalMeMain = idealHost - chrome;
+    // image aspect; otherwise the image is letterboxed and centered. Measure
+    // against the height actually applied (the deadband may hold us short of
+    // idealHost), so the letterbox decision matches what's on screen.
+    const appliedHost = applyHeight ? idealHost : currentHost;
+    const finalMeMain = appliedHost - chrome;
     this.fitFill = Math.abs(finalMeMain - hugHeight) <= 2;
+  }
+
+  /**
+   * Re-sync the stage to the container's current size and re-fit the image.
+   * Runs on container resizes, after image load, and from the size watchdog —
+   * the container can change size while a large image is still decoding, and
+   * the fit must always reflect the final layout.
+   */
+  private syncStageToContainer(): void {
+    // Adjust container height to the image on responsive widths first so the
+    // stage picks up the new height, then re-fit the image into it.
+    this.updateCanvasHeight();
+    this.stage.width(this.container.offsetWidth);
+    this.stage.height(this.container.offsetHeight);
+    this.fitToScreen();
   }
 
   fitToScreen(): void {
@@ -1412,6 +1574,11 @@ export class Canvas {
       ? padding - bbTop * scale
       : (stageHeight - imageHeight * scale) / 2 - bbTop * scale;
 
+    // A very high-resolution image in a small container can need a fit scale
+    // below the normal 0.1 zoom floor — lower the floor so the fit is always
+    // representable, otherwise the clamp renders the image larger than the
+    // canvas (zoomed-in, cropped, misaligned with neighbouring viewers).
+    this.store.setMinScale(scale);
     this.store.setScale(scale);
     this.store.setPosition({ x, y });
     this.updateTransform();
@@ -1424,7 +1591,7 @@ export class Canvas {
   zoomBy(factor: number): void {
     const state = this.store.getState();
     const oldScale = state.scale;
-    const newScale = Math.max(0.1, Math.min(5, oldScale * factor));
+    const newScale = this.store.clampScale(oldScale * factor);
     if (newScale === oldScale) return;
 
     // Keep the point at the viewport centre fixed while scaling.
@@ -1550,7 +1717,22 @@ export class Canvas {
       node.scaleX(1);
       node.scaleY(1);
 
-      if (annotation.type === 'callout' || annotation.type === 'caption') {
+      if (annotation.type === 'pen' || annotation.type === 'highlight') {
+        // The transformer scales the Line node (and offsets it for anchors that
+        // pivot off the opposite corner). Bake both into the stored points so the
+        // resize survives a re-render — otherwise the fresh Line rebuilt from the
+        // original points on the next render (e.g. switching images) loses it.
+        const offsetX = node.x();
+        const offsetY = node.y();
+        node.x(0);
+        node.y(0);
+        const pts = (annotation as PenAnnotation).points;
+        const newPoints: number[] = [];
+        for (let i = 0; i < pts.length; i += 2) {
+          newPoints.push(offsetX + pts[i] * scaleX, offsetY + pts[i + 1] * scaleY);
+        }
+        this.store.updateAnnotation(image.id, annotation.id, { points: newPoints });
+      } else if (annotation.type === 'callout' || annotation.type === 'caption') {
         this.store.updateAnnotation(image.id, annotation.id, {
           x: node.x(),
           y: node.y(),
@@ -1608,6 +1790,7 @@ export class Canvas {
         line.on('mousedown touchstart', handleClick);
         line.on('dragmove', handleDragMove);
         line.on('dragend', handleDragEnd);
+        line.on('transformend', handleTransformEnd);
         return line;
       }
 
@@ -2404,6 +2587,16 @@ export class Canvas {
   }
 
   destroy(): void {
+    if (this.sizeWatchdog !== null) {
+      window.clearInterval(this.sizeWatchdog);
+      this.sizeWatchdog = null;
+    }
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
+    this.compareResizeObserver?.disconnect();
+    this.compareResizeObserver = null;
+    this.dprQuery?.removeEventListener('change', this.onDprChange);
+    this.dprQuery = null;
     this.stage.destroy();
   }
 }

@@ -189,6 +189,22 @@ export const styles = `
   position: relative;
   background: var(--me-canvas-bg);
   overflow: hidden;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* Konva gives .konvajs-content a fixed pixel size (the stage size). Left in
+   normal flow, that fixed size props open the min-content size of ancestor
+   flex/grid tracks in the embedding app, so when the surrounding layout
+   settles smaller after the image has loaded, the container never shrinks,
+   the ResizeObserver never fires, and the stale (wider) fit gets clipped by
+   an ancestor — the image looks zoomed-in and cut off. Taking it out of flow
+   means the container's size is always layout-driven, so resizes propagate
+   and re-fit. Konva sets position:relative inline, hence !important. */
+.me-canvas-container > .konvajs-content {
+  position: absolute !important;
+  top: 0;
+  left: 0;
 }
 
 .me-canvas-stage {

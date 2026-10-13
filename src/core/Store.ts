@@ -470,8 +470,22 @@ export class Store extends EventEmitter {
   }
 
   // Canvas
+
+  // Lower bound for the zoom level. Normally 0.1, but a very high-resolution
+  // image in a small container can need a fit scale below that — the fit must
+  // always be reachable, so fitToScreen lowers this floor to the fit scale.
+  private minScale = 0.1;
+
+  setMinScale(scale: number): void {
+    this.minScale = Math.min(0.1, scale);
+  }
+
+  clampScale(scale: number): number {
+    return Math.max(this.minScale, Math.min(5, scale));
+  }
+
   setScale(scale: number): void {
-    this.state.scale = Math.max(0.1, Math.min(5, scale));
+    this.state.scale = this.clampScale(scale);
     this.emit('zoomChange', this.state.scale);
   }
 
