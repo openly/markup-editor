@@ -116,10 +116,12 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
       defaultOverlayOpacity: options.defaultOverlayOpacity,
     });
 
-    // Set initial tool settings
-    if (options.defaultTool) {
-      this.store.setTool(options.defaultTool);
-    }
+    // Set initial tool settings. Pen is the default so users can draw
+    // immediately, unless the enabled tools exclude it.
+    const initialTool =
+      options.defaultTool ??
+      (!options.tools || options.tools.includes('pen') ? 'pen' : 'select');
+    this.store.setTool(initialTool);
     if (options.defaultColor) {
       this.store.setColor(options.defaultColor);
     }
