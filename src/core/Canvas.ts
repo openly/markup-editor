@@ -161,6 +161,10 @@ export class Canvas {
     this.setupEventListeners();
     this.setupStoreListeners();
 
+    // The tool is chosen before the canvas exists, so the toolChange listener
+    // never saw it — apply it now (cursor + layer hit-testing).
+    this.syncToolState();
+
     // Handle resize
     this.resizeObserver = new ResizeObserver(() => this.syncStageToContainer());
     this.resizeObserver.observe(this.container);
@@ -247,17 +251,7 @@ export class Canvas {
   private setupStoreListeners(): void {
     this.store.on('imageChange', () => this.loadCurrentImage());
     this.store.on('imageRotate', () => this.updateImageRotation());
-    this.store.on('toolChange', () => {
-      this.updateCursor();
-      const tool = this.store.getState().currentTool;
-      this.annotationLayer.listening(tool === 'select');
-      if (tool !== 'select') {
-        this.store.selectAnnotation(null);
-        this.transformer.nodes([]);
-        this.transformer.visible(false);
-        this.annotationLayer.batchDraw();
-      }
-    });
+    this.store.on('toolChange', () => this.syncToolState());
     this.store.on('selectionChange', (id: string | null) => this.handleSelectionChange(id));
     this.store.on('annotationAdd', () => this.renderAnnotations());
     this.store.on('annotationUpdate', () => this.renderAnnotations());
@@ -992,6 +986,19 @@ export class Canvas {
     const state = this.store.getState();
     const tool = state.currentTool;
     this.container.style.cursor = tool === 'select' ? 'grab' : 'crosshair';
+  }
+
+  /** Apply the current tool to the canvas: cursor and annotation hit-testing. */
+  private syncToolState(): void {
+    this.updateCursor();
+    const tool = this.store.getState().currentTool;
+    this.annotationLayer.listening(tool === 'select');
+    if (tool !== 'select') {
+      this.store.selectAnnotation(null);
+      this.transformer.nodes([]);
+      this.transformer.visible(false);
+      this.annotationLayer.batchDraw();
+    }
   }
 
   async loadImage(url: string): Promise<void> {
