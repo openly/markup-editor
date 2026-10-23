@@ -53,7 +53,7 @@ const initialState: StoreState = {
   historyByImage: {},
   historyIndexByImage: {},
   selectedId: null,
-  currentTool: 'select',
+  currentTool: 'pen',
   color: '#ff0000',
   strokeWidth: 3,
   fontSize: 48,
