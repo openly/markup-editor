@@ -132,11 +132,13 @@ export class Canvas {
       }
     }
 
-    // Create stage
+    // Create stage. Size from the content box (clientWidth/Height) — the
+    // container may carry a CSS border (enableBorder) that offsetWidth would
+    // include, oversizing the stage and clipping its right/bottom edge.
     this.stage = new Konva.Stage({
       container: this.container as HTMLDivElement,
-      width: this.container.offsetWidth,
-      height: this.container.offsetHeight,
+      width: this.container.clientWidth,
+      height: this.container.clientHeight,
     });
 
     // Create layers
@@ -184,8 +186,8 @@ export class Canvas {
     this.sizeWatchdog = window.setInterval(() => {
       this.syncPixelRatio();
       if (!this.imageElement) return;
-      const w = this.container.offsetWidth;
-      const h = this.container.offsetHeight;
+      const w = this.container.clientWidth;
+      const h = this.container.clientHeight;
       if (w > 0 && h > 0 && (this.stage.width() !== w || this.stage.height() !== h)) {
         this.syncStageToContainer();
         this.renderGrid();
@@ -1052,8 +1054,8 @@ export class Canvas {
         requestAnimationFrame(() => {
           if (
             this.imageElement === img &&
-            (this.stage.width() !== this.container.offsetWidth ||
-              this.stage.height() !== this.container.offsetHeight)
+            (this.stage.width() !== this.container.clientWidth ||
+              this.stage.height() !== this.container.clientHeight)
           ) {
             this.syncStageToContainer();
             this.renderGrid();
@@ -1484,6 +1486,9 @@ export class Canvas {
     // Ideal canvas height so the image fills the canvas width exactly.
     const canvasWidth = this.container.clientWidth;
     const hugHeight = canvasWidth / (imgW / imgH);
+    // The container's own CSS border (enableBorder) sits outside the content
+    // box the image fills — .me-main must make room for it too.
+    const borderV = this.container.offsetHeight - this.container.clientHeight;
 
     // .me-main must also fit the (vertical) toolbar without clipping its tools.
     // The toolbar is a stretched flex item, so its own height tracks .me-main —
@@ -1491,7 +1496,7 @@ export class Canvas {
     const toolbar = root.querySelector('.me-toolbar') as HTMLElement | null;
     const toolbarHeight = toolbar ? this.measureContentHeight(toolbar) : 0;
 
-    const idealMeMain = Math.max(hugHeight, toolbarHeight, Canvas.MIN_MEMAIN_HEIGHT);
+    const idealMeMain = Math.max(hugHeight + borderV, toolbarHeight, Canvas.MIN_MEMAIN_HEIGHT);
     const cap = this.hostMaxHeight || root.clientHeight;
     const idealHost = Math.min(cap, Math.round(chrome + idealMeMain));
 
@@ -1528,7 +1533,7 @@ export class Canvas {
     // idealHost), so the letterbox decision matches what's on screen.
     const appliedHost = applyHeight ? idealHost : currentHost;
     const finalMeMain = appliedHost - chrome;
-    this.fitFill = Math.abs(finalMeMain - hugHeight) <= 2;
+    this.fitFill = Math.abs(finalMeMain - borderV - hugHeight) <= 2;
   }
 
   /**
@@ -1541,8 +1546,8 @@ export class Canvas {
     // Adjust container height to the image on responsive widths first so the
     // stage picks up the new height, then re-fit the image into it.
     this.updateCanvasHeight();
-    this.stage.width(this.container.offsetWidth);
-    this.stage.height(this.container.offsetHeight);
+    this.stage.width(this.container.clientWidth);
+    this.stage.height(this.container.clientHeight);
     this.fitToScreen();
   }
 

@@ -85,10 +85,12 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     // Initialize theme
     this.themeMode = options.theme || 'light';
     applyTheme(this.container, getTheme(this.themeMode));
+    this.syncImageBorder();
 
     if (this.themeMode === 'auto') {
       this.unwatchTheme = watchSystemTheme((isDark) => {
         applyTheme(this.container, getTheme(isDark ? 'dark' : 'light'));
+        this.syncImageBorder();
         this.emit('themeChange', isDark ? 'dark' : 'light');
       });
     }
@@ -499,6 +501,8 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
     this.emit('destroy');
     this.plugins.forEach((plugin) => plugin.uninstall?.(this));
     this.unwatchTheme?.();
+    // The host element outlives this editor instance (flo-ui reuses it).
+    this.container.classList.remove('me-image-border');
     this.canvas?.destroy();
     this.ui.destroy();
     this.store.reset();
@@ -734,12 +738,14 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
   setTheme(mode: ThemeMode): void {
     this.themeMode = mode;
     applyTheme(this.container, getTheme(mode));
+    this.syncImageBorder();
 
     // Update auto-watch
     this.unwatchTheme?.();
     if (mode === 'auto') {
       this.unwatchTheme = watchSystemTheme((isDark) => {
         applyTheme(this.container, getTheme(isDark ? 'dark' : 'light'));
+        this.syncImageBorder();
         this.emit('themeChange', isDark ? 'dark' : 'light');
       });
     }
@@ -749,6 +755,24 @@ export class MarkupEditor extends EventEmitter implements MarkupEditorAPI {
 
   getTheme(): ThemeMode {
     return this.themeMode;
+  }
+
+  private isDarkTheme(): boolean {
+    if (this.themeMode === 'auto') {
+      return window.matchMedia('(prefers-color-scheme: dark)').matches;
+    }
+    return this.themeMode === 'dark';
+  }
+
+  // The image-area border only exists for light themes, where white-background
+  // images blend into the canvas — dark backgrounds already show the edges.
+  // Rendered as a CSS border on the canvas area (see styles.ts), so it frames
+  // the image on all four sides and is unaffected by zoom/pan.
+  private syncImageBorder(): void {
+    this.container.classList.toggle(
+      'me-image-border',
+      (this.options.enableBorder ?? false) && !this.isDarkTheme()
+    );
   }
 
   // Export
