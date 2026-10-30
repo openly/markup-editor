@@ -268,15 +268,6 @@ export interface MarkupEditorOptions {
    * restored automatically. Default true; set false to opt out.
    */
   preserveAnnotations?: boolean;
-  /**
-   * Frame the image area with a fixed border (top/bottom/left/right) so
-   * white-background images stay distinguishable from a light page around
-   * them. Rendered as a CSS border outside the canvas — constant under
-   * zoom/pan, never covering image pixels, never part of exports. Only shown
-   * while the resolved theme is light (dark mode already provides contrast).
-   * Default false.
-   */
-  enableBorder?: boolean;
   toolbarPosition?: 'left' | 'right' | 'top' | 'bottom';
   locale?: string;
   plugins?: MarkupPlugin[];

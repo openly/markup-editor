@@ -193,15 +193,6 @@ export const styles = `
   min-height: 0;
 }
 
-/* Fixed frame around the image area (enableBorder, light theme only — the
-   class is toggled by MarkupEditor). A real border rather than a canvas
-   overlay: it never covers image pixels and stays constant under zoom/pan.
-   The stage sizes itself from the content box, so the border takes its own
-   space. */
-.me-image-border .me-canvas-container {
-  border: 2px solid rgba(0, 0, 0, 0.4);
-}
-
 /* Konva gives .konvajs-content a fixed pixel size (the stage size). Left in
    normal flow, that fixed size props open the min-content size of ancestor
    flex/grid tracks in the embedding app, so when the surrounding layout
